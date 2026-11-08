@@ -1,0 +1,57 @@
+/* Планировщик меню: неделя, покупки, статистика, блюда */
+.tabline{display:flex;gap:6px;overflow-x:auto;margin:0 0 12px;padding-bottom:2px}
+.tabline button{flex:0 0 auto;border:1px solid var(--row-line);background:var(--surface);color:inherit;border-radius:999px;padding:8px 14px;font:inherit;font-size:14px;cursor:pointer}
+.tabline button.active{background:#2f5d50;border-color:#2f5d50;color:#fff}
+.pl-week-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+.pl-week-title{text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px}
+.pl-day{background:var(--surface);border:1px solid var(--row-line);border-radius:14px;padding:12px;margin-bottom:10px}
+.pl-day.is-today{border-color:#2f5d50;box-shadow:0 0 0 2px rgba(47,93,80,.15)}
+.pl-day-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.today-pill{font-size:11px;background:#2f5d50;color:#fff;border-radius:999px;padding:2px 8px}
+.pl-slot{display:flex;flex-direction:column;gap:4px;margin-top:8px;font-size:13px}
+.pl-slot > span{color:var(--sub);font-weight:600}
+.pl-slot select{width:100%;padding:10px;border-radius:10px;border:1px solid var(--row-line);background:var(--surface);color:inherit;font:inherit}
+.pl-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--sub);font-weight:600}
+.pl-toggle input{width:18px;height:18px;accent-color:#2f5d50}
+.pl-actions{display:grid;gap:8px;margin-top:12px}
+.pill-draft{background:var(--chip)}
+.pill-confirmed{background:#e3efe9;color:#2f5d50}
+.pill-bought{background:#2f5d50;color:#fff}
+.warn-box{background:#fff4e0;color:#7a4a00;border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:14px}
+[data-theme="dark"] .warn-box{background:#3a2f1a;color:#f0c987}
+.shop-summary{background:var(--surface);border:1px solid var(--row-line);border-radius:14px;padding:14px;margin-bottom:12px}
+.shop-summary .bar{height:8px;background:var(--row-line);border-radius:999px;overflow:hidden;margin-top:10px}
+.shop-summary .bar > div{height:100%;background:#4c8474;transition:width .3s}
+.shop-card{background:var(--surface);border:1px solid var(--row-line);border-radius:14px;padding:4px 14px 6px;margin-bottom:10px}
+.shop-card h3{display:flex;align-items:center;gap:8px;font-size:15px;margin:10px 0 2px}
+.leg-dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex:0 0 auto}
+.shop-card .item{display:flex;align-items:center;gap:12px;position:relative;padding:10px 0;border-bottom:1px solid var(--row-line);cursor:pointer}
+.shop-card .item:last-child{border-bottom:0}
+.shop-card .item input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+.shop-card .box{width:24px;height:24px;border-radius:8px;border:2px solid var(--row-line);display:grid;place-items:center;color:transparent;flex:0 0 auto;font-size:14px}
+.shop-card .item input:focus-visible + .box{outline:3px solid #9cc7b8;outline-offset:2px}
+.shop-card .item.done .box{background:#4c8474;border-color:#4c8474;color:#fff}
+.shop-card .item.done .nm{text-decoration:line-through;opacity:.55}
+.shop-card .txt{flex:1;min-width:0}
+.shop-card .qty{font-size:13px;color:var(--sub)}
+.donut-wrap{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.donut{flex:0 0 auto}
+.legend{flex:1;min-width:180px}
+.leg-row{display:grid;grid-template-columns:auto 1fr auto 40px;gap:8px;align-items:center;padding:4px 0;font-size:14px}
+.leg-val{font-weight:700}
+.leg-pct{color:var(--sub);text-align:right}
+.bar-row{display:grid;grid-template-columns:minmax(80px,30%) 1fr auto;gap:10px;align-items:center;padding:6px 0;font-size:14px}
+.bar-lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-track{height:10px;background:var(--row-line);border-radius:999px;overflow:hidden}
+.bar-fill{height:100%;background:#4c8474;border-radius:999px}
+.bar-val{font-weight:700;white-space:nowrap}
+.dish-btn{width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.lib-search{flex:1;min-width:0}
+.ing-row{display:grid;grid-template-columns:2fr 1fr 1fr .8fr 1.4fr auto;gap:6px;margin-bottom:6px}
+.ing-row input,.ing-row select{min-width:0;padding:8px;font:inherit;font-size:14px}
+@media (max-width:480px){
+  .ing-row{grid-template-columns:1fr 1fr 1fr}
+  .ing-row [data-f="name"]{grid-column:1/-1}
+  .ing-row [data-f="cat"]{grid-column:span 2}
+}
+.receipt-items{max-height:280px;overflow:auto;margin-bottom:12px}

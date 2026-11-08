@@ -1,4 +1,5 @@
-import { menuHtml, menuBind, menuInit, menuSummaryHtml } from './menu/menu.js?v=a7';
+import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b1';
+import { pullRemote, queuePush } from './sync.js?v=b1';
 import { iso, todayIso, addDays, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js';
 
 // ---------- помощники ----------
@@ -7,7 +8,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const uid = () => Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
 const read = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } };
 const write = (k, v) => localStorage.setItem(k, JSON.stringify(v));
-const save = () => write('as.data', S);
+const save = () => { S.updatedAt = Date.now(); write('as.data', S); queuePush(S); };
 const money = (n) => `${Math.round(Number(n) || 0).toLocaleString('ru-RU')} ${S.settings.currency}`;
 const fmtDate = (s) => { if (!s) return ''; const [y, m, d] = s.split('-'); return `${d}.${m}.${y}`; };
 const monthName = (ym) => { const [y, m] = ym.split('-'); return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }); };
@@ -194,7 +195,7 @@ function viewDash() {
   const s = monthSummary(S, ym, ME);
   const up = upcoming(S, t, 14);
   return `
-    ${menuSummaryHtml()}
+    ${plannerSummaryHtml()}
     <div class="grid-2" style="margin-bottom:12px">
       <div class="stat"><div class="lbl">Доходы, ${monthName(ym)}</div><div class="val pos">${money(s.income)}</div></div>
       <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(s.expense)}</div></div>
@@ -438,7 +439,7 @@ function viewPeople() {
 
 const TITLE = { ...Object.fromEntries(SECTIONS), settings: 'Настройки', more: 'Ещё' };
 
-const VIEWS = { dash: viewDash, fin: viewFin, goals: viewGoals, rem: viewRem, menu: menuHtml, car: viewCar, house: viewHouse, more: viewMore, settings: viewPeople };
+const VIEWS = { dash: viewDash, fin: viewFin, goals: viewGoals, rem: viewRem, menu: plannerHtml, car: viewCar, house: viewHouse, more: viewMore, settings: viewPeople };
 
 // ---------- колокольчик: напоминания, прочтение и платежи к подтверждению ----------
 // Прочтение хранится по каждому участнику: S.reads[ключ] = [id людей, которые открыли].
@@ -488,7 +489,7 @@ function render() {
   const bc = $('#bell-count');
   bc.textContent = n > 9 ? '9+' : String(n);
   bc.hidden = n === 0;
-  if (SEC === 'menu') menuBind();
+  if (SEC === 'menu') plannerBind();
   bindChange();
 }
 
@@ -752,6 +753,19 @@ document.addEventListener('click', (e) => {
   if (changed !== false) { save(); render(); }
 });
 
+// ---------- контекст для модуля меню ----------
+const plannerCtx = {
+  S: () => S, esc, money, uid, todayIso, toast, save,
+  render: () => { save(); render(); },
+  openModal: (title, html) => {
+    $('#modal-title').textContent = title;
+    $('#modal-body').innerHTML = html;
+    $('#modal').classList.remove('hidden');
+  },
+  closeModal,
+  addTransaction: (t) => S.transactions.push({ id: uid(), ...t, account: t.account || (S.accounts[0] || {}).id || '' }),
+};
+
 // ---------- запуск ----------
 async function loadBase() {
   return (await fetch('data.json', { cache: 'no-store' })).json();
@@ -767,7 +781,15 @@ async function init() {
     S.settings = { ...base.settings, ...(S.settings || {}) };
     ME = read('as.me', null);
     if (!S.people.some((p) => p.id === ME)) ME = S.people[0] ? S.people[0].id : null;
-    await menuInit(() => render());
+    // Если в Supabase данные новее локальных — берём их (см. sync.js; без настройки ничего не делает).
+    const remote = await pullRemote().catch(() => null);
+    if (remote && remote.updated_at > (S.updatedAt || 0)) {
+      S = { ...base, ...remote.payload };
+      S.settings = { ...base.settings, ...(S.settings || {}) };
+      write('as.data', S);
+    }
+    if (!S.menu) S.menu = structuredClone(base.menu);
+    plannerInit(plannerCtx);
     render();
   } catch (err) {
     $('#main').innerHTML = `<div class="card">Не удалось загрузить data.json. Откройте приложение по ссылке GitHub Pages или через локальный сервер.<br><span class="muted">${esc(err.message)}</span></div>`;
