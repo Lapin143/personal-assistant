@@ -2,7 +2,7 @@
   "settings": { "notifyDaysAhead": 3, "currency": "₽" },
   "people": [
     { "id": "p1", "name": "Владислав" },
-    { "id": "p2", "name": "Партнёр" }
+    { "id": "p2", "name": "Екатерина" }
   ],
   "accounts": [
     { "id": "a1", "name": "Карта", "owner": "shared" },

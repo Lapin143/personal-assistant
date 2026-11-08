@@ -40,7 +40,7 @@ let CAR_ID = null;
 
 const SECTIONS = [
   ['dash', 'Главная'], ['fin', 'Финансы'], ['goals', 'Цели'], ['wish', 'Вишлист'], ['rem', 'Напоминания'],
-  ['car', 'Авто'], ['house', 'Дом'], ['docs', 'Документы'], ['people', 'Люди']
+  ['menu', 'Меню'], ['car', 'Авто'], ['house', 'Дом'], ['docs', 'Документы'], ['people', 'Люди']
 ];
 
 // ---------- формы ----------
@@ -311,11 +311,13 @@ function viewPeople() {
     <div class="card"><div class="setting-title">Кто вы</div>
       <p class="setting-desc">Определяет, чьи личные операции вы видите. Это не защита данных: все данные доступны в браузере.</p>
       <select id="me-select">${S.people.map((p) => `<option value="${p.id}" ${p.id === ME ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
-    <div class="card"><div class="row" style="justify-content:space-between"><div class="setting-title">Участники</div>
+    <div class="card"><div class="row" style="justify-content:space-between"><div class="setting-title">Имена</div>
       <button class="btn soft" data-act="addPerson">+ Человек</button></div>
-      ${S.people.map((p) => `<div class="li"><div class="main"><div class="t">${esc(p.name)}</div></div>
-        <button class="icon-btn" data-act="renamePerson" data-id="${p.id}" aria-label="Переименовать">✎</button>
-        <button class="icon-btn" data-act="del" data-coll="people" data-id="${p.id}" aria-label="Удалить">✕</button></div>`).join('')}</div>
+      <p class="setting-desc">Имя показывается в операциях, целях, документах и на главной.</p>
+      ${S.people.map((p) => `<div class="li"><div class="main"><label class="field" for="pn_${p.id}">Имя</label>
+        <input id="pn_${p.id}" type="text" value="${esc(p.name)}"></div>
+        <button class="icon-btn" data-act="del" data-coll="people" data-id="${p.id}" aria-label="Удалить">✕</button></div>`).join('')}
+      <div class="pill-row"><button class="btn" data-act="saveNames">Сохранить имена</button></div></div>
     <div class="card"><div class="row" style="justify-content:space-between"><div class="setting-title">Счета</div>
       <button class="btn soft" data-act="addAcc">+ Счёт</button></div>
       ${S.accounts.map((a) => `<div class="li"><div class="main"><div class="t">${esc(a.name)}</div>
@@ -336,7 +338,13 @@ function viewPeople() {
       <button class="btn danger" data-act="resetData">Сбросить всё</button></div></div>`;
 }
 
-const VIEWS = { dash: viewDash, fin: viewFin, goals: viewGoals, wish: viewWish, rem: viewRem, car: viewCar, house: viewHouse, docs: viewDocs, people: viewPeople };
+// Меню на 30 дней — полный приложение из папки menu/ (блюда, замены, покупки, чеки),
+// встроено на весь экран раздела. Его данные хранятся отдельно (ключи menu.*).
+function viewMenu() {
+  return `<iframe class="menu-frame" src="menu/index.html" title="Меню на 30 дней" loading="lazy"></iframe>`;
+}
+
+const VIEWS = { dash: viewDash, fin: viewFin, goals: viewGoals, wish: viewWish, rem: viewRem, menu: viewMenu, car: viewCar, house: viewHouse, docs: viewDocs, people: viewPeople };
 
 // ---------- отрисовка ----------
 function render() {
@@ -563,10 +571,13 @@ const ACTIONS = {
     });
     return false;
   },
-  renamePerson: (d) => {
-    const p = S.people.find((x) => x.id === d.id);
-    const name = prompt('Имя', p.name);
-    if (name && name.trim()) p.name = name.trim();
+  saveNames: () => {
+    let changed = 0;
+    for (const p of S.people) {
+      const v = $('#pn_' + p.id).value.trim();
+      if (v && v !== p.name) { p.name = v; changed++; }
+    }
+    toast(changed ? 'Имена сохранены' : 'Имена без изменений');
   },
   saveCats: () => {
     const split = (id) => $(id).value.split(',').map((s) => s.trim()).filter(Boolean);
