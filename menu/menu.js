@@ -183,24 +183,42 @@ function todayHtml() {
   return html;
 }
 
+// Замена: выбираем любое блюдо из полного списка, сгруппировано по типу, с поиском.
 function openReplace(n, slot) {
-  const pool = poolFor(n, slot);
   const cur = currentMeal(n, slot);
-  const body = pool.length
-    ? `<p class="muted" style="margin:0 0 10px">Выберите, что готовим. Блюда того же типа.</p>
-       <div class="tiles">${pool.map((name) => {
-         const i = dishInfo(name);
-         return `<button class="tile ${name === cur ? 'current' : ''}" data-pick="${esc(name)}">
-           <span class="e">${esc(i.emoji)}</span>
-           <span class="n">${esc(name)}</span>
-           ${name === cur ? '<span class="now">сейчас</span>' : ''}
-         </button>`;
-       }).join('')}</div>`
-    : '<p class="muted">Нет блюд этого типа. Добавьте их на вкладке «Блюда».</p>';
+  const groups = [['breakfast', 'Завтраки'], ['lunch', 'Обеды'], ['soup', 'Супы'], ['dinner', 'Ужины']];
+  const tile = (name) => {
+    const i = dishInfo(name);
+    return `<button class="tile ${name === cur ? 'current' : ''}" data-pick="${esc(name)}" data-name="${esc(name.toLowerCase())}">
+      <span class="e">${esc(i.emoji)}</span>
+      <span class="n">${esc(name)}</span>
+      ${name === cur ? '<span class="now">сейчас</span>' : ''}
+    </button>`;
+  };
+  const body = `
+    <p class="muted" style="margin:0 0 10px">Выберите любое блюдо из списка. Сейчас: ${esc(cur)}</p>
+    <div class="search"><input id="pick-q" placeholder="Поиск блюда"></div>
+    ${groups.map(([type, title]) => {
+      const names = D.dishes.filter((d) => d.type === type).map((d) => d.name);
+      return names.length ? `<div class="group-title">${title}</div><div class="tiles" data-group>${names.map(tile).join('')}</div>` : '';
+    }).join('')}`;
   showModal(`${MEAL[slot].title}, день ${n}`, body);
-  $('#modal-body').querySelectorAll('[data-pick]').forEach((b) => {
+  const root = $('#modal-body');
+  root.querySelectorAll('[data-pick]').forEach((b) => {
     b.onclick = () => { setMeal(n, slot, b.dataset.pick); hideModal(); rerender(); toast('Блюдо заменено'); };
   });
+  const q = root.querySelector('#pick-q');
+  q.oninput = () => {
+    const s = q.value.trim().toLowerCase();
+    root.querySelectorAll('[data-pick]').forEach((b) => {
+      b.style.display = !s || b.dataset.name.includes(s) ? '' : 'none';
+    });
+    root.querySelectorAll('[data-group]').forEach((g) => {
+      const any = [...g.querySelectorAll('[data-pick]')].some((b) => b.style.display !== 'none');
+      g.previousElementSibling.style.display = any ? '' : 'none';
+      g.style.display = any ? '' : 'none';
+    });
+  };
 }
 
 // ---------- вкладка «Блюда» ----------
