@@ -91,7 +91,10 @@ function aggregate(mon) {
       for (const ing of d.ingredients) {
         const key = `${ing.name.toLowerCase()}|${ing.unit}`;
         const cur = map.get(key) || { name: ing.name, unit: ing.unit, cat: ing.cat, total: 0 };
-        cur.total += (ing.a || 0) + (ing.b || 0);
+        // Штучные продукты не делятся между приёмами пищи: остаток на следующий день не сохраняем.
+        // Половинки внутри одного приёма (каждому по половинке) округляются до целой штуки.
+        const need = (ing.a || 0) + (ing.b || 0);
+        cur.total += ing.unit === 'шт' ? Math.ceil(need - 1e-9) : need;
         map.set(key, cur);
       }
     }
@@ -550,7 +553,7 @@ function dishFormHtml(d) {
       <label class="field" for="d-emoji">Эмодзи</label><input id="d-emoji" maxlength="4" value="${esc(d ? d.emoji || '' : '')}">
       <label class="field" for="d-desc">Описание</label><textarea id="d-desc" rows="2">${esc(d ? d.description || '' : '')}</textarea>
       <div class="sub-title">Продукты</div>
-      <p class="setting-desc">«мен.» и «бол.» — количество для меньшей и большей порции. Если продукт на двоих, укажите половину в каждом поле.</p>
+      <p class="setting-desc">«мен.» и «бол.» — количество для меньшей и большей порции. Штучные продукты («шт») не переносятся на следующий день: половинки в одном приёме округляются до целой штуки.</p>
       <div id="ing-list">${ing.map((i) => row(i)).join('')}</div>
       <button class="btn soft" id="ing-add">+ Продукт</button>
       <div class="pill-row" style="margin-top:12px">
