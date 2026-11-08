@@ -1,4 +1,4 @@
-import { menuHtml, menuBind, menuInit, menuSummaryHtml } from './menu/menu.js';
+import { menuHtml, menuBind, menuInit, menuSummaryHtml } from './menu/menu.js?v=a7';
 import { iso, todayIso, addDays, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js';
 
 // ---------- помощники ----------
