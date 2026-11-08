@@ -1,4 +1,7 @@
 // Настройки синхронизации между устройствами (Supabase).
-// Пока поля пустые — данные хранятся только на этом устройстве.
-// url — адрес проекта Supabase, key — публичный anon-ключ (не service_role!).
-export const SUPABASE = { url: '', key: '' };
+// url — адрес проекта, key — публичный publishable-ключ (не secret и не service_role).
+// Публичный ключ виден в коде сайта; защита данных — через Supabase Auth и политики (см. README).
+export const SUPABASE = {
+  url: 'https://ynwmnccdmopyrjjhadot.supabase.co',
+  key: 'sb_publishable_nKjq8D3Hf4LID6yKyMMpaQ_ru3I7udB'
+};
