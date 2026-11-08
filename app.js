@@ -114,8 +114,7 @@ function viewDash() {
       ${up.length ? up.map(liUp).join('') : '<div class="empty">Ничего не запланировано</div>'}</div>
     <div class="card"><div class="setting-title">Цели</div>
       ${S.goals.length ? S.goals.slice(0, 3).map(goalRow).join('') : '<div class="empty">Целей пока нет</div>'}</div>
-    <div class="card"><button class="btn soft block" data-act="notify">Включить уведомления</button>
-      <p class="note">На телефоне уведомления приходят, пока приложение открыто. Отправку в Telegram смотрите в README.</p></div>`;
+    `;
 }
 
 function viewFin() {
@@ -329,8 +328,7 @@ function viewPeople() {
     <div class="card"><div class="setting-title">Уведомления</div>
       <p class="setting-desc">За сколько дней предупреждать о событии.</p>
       <label class="field">Дней заранее</label><input id="notify-days" type="number" min="0" max="30" value="${S.settings.notifyDaysAhead}">
-      <div class="pill-row"><button class="btn soft" data-act="saveSettings">Сохранить</button>
-      <button class="btn soft" data-act="notify">Включить уведомления</button></div></div>
+      <div class="pill-row"><button class="btn soft" data-act="saveSettings">Сохранить</button></div></div>
     <div class="card"><div class="setting-title">Данные</div>
       <p class="setting-desc">Экспорт сохраняет всё в файл. Не кладите этот файл в публичный репозиторий: в нём финансы.</p>
       <div class="pill-row"><button class="btn" data-act="exportData">Экспорт</button>
@@ -347,7 +345,7 @@ function render() {
   $('#hero-sub').textContent = `${fmtDate(todayIso())} · ${personName(ME) || 'Гость'}`;
   $('#sections').innerHTML = SECTIONS.map(([id, l]) =>
     `<button class="${id === SEC ? 'active' : ''}" data-act="sec" data-v="${id}">${l}</button>`).join('');
-  $('#main').innerHTML = VIEWS[SEC]();
+  $('#main').innerHTML = remindHtml() + VIEWS[SEC]();
   bindChange();
 }
 
@@ -580,7 +578,7 @@ const ACTIONS = {
     S.settings.notifyDaysAhead = isNaN(n) ? 3 : Math.min(30, Math.max(0, n));
     toast('Сохранено');
   },
-  notify: () => { enableNotify(); return false; },
+  ackRem: () => { write('as.ackDay', todayIso()); },
   exportData: () => {
     const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -611,24 +609,19 @@ document.addEventListener('click', (e) => {
   if (changed !== false) { save(); render(); }
 });
 
-// ---------- уведомления ----------
-async function enableNotify() {
-  if (!('Notification' in window)) return toast('Браузер не поддерживает уведомления');
-  const p = await Notification.requestPermission();
-  toast(p === 'granted' ? 'Уведомления включены' : 'Уведомления не разрешены');
-  checkNotify();
-}
-
-function checkNotify() {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+// ---------- напоминания внутри приложения ----------
+// Показываются вверху любого раздела, пока есть события в пределах «Дней заранее».
+// Скрываются до конца дня кнопкой ✕.
+function remindHtml() {
   const t = todayIso();
-  if (read('as.lastNotify', '') === t) return;
+  if (read('as.ackDay', '') === t) return '';
   const items = upcoming(S, t, S.settings.notifyDaysAhead);
-  if (!items.length) return;
-  write('as.lastNotify', t);
-  for (const it of items.slice(0, 5)) {
-    new Notification('Ассистент', { body: `${fmtDate(it.date)} · ${it.title}` });
-  }
+  if (!items.length) return '';
+  return `<div class="card remind">
+    <div class="row" style="justify-content:space-between">
+      <div class="setting-title" style="margin:0">Скоро</div>
+      <button class="icon-btn" data-act="ackRem" aria-label="Скрыть до завтра">✕</button></div>
+    ${items.slice(0, 8).map(liUp).join('')}</div>`;
 }
 
 // ---------- запуск ----------
@@ -646,8 +639,6 @@ async function init() {
     ME = read('as.me', null);
     if (!S.people.some((p) => p.id === ME)) ME = S.people[0] ? S.people[0].id : null;
     render();
-    checkNotify();
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) checkNotify(); });
   } catch (err) {
     $('#main').innerHTML = `<div class="card">Не удалось загрузить data.json. Откройте приложение по ссылке GitHub Pages или через локальный сервер.<br><span class="muted">${esc(err.message)}</span></div>`;
   }
