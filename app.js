@@ -52,6 +52,15 @@ function toast(msg) {
   setTimeout(() => t.remove(), 1800);
 }
 
+// ---------- тема ----------
+// Тема хранится на устройстве (как и «Кто вы»), а не в данных семьи.
+function applyTheme(mode) {
+  const dark = mode === 'dark';
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = dark ? '#121614' : '#2f5d50';
+}
+
 // ---------- состояние ----------
 let S = null;
 let ME = null;
@@ -414,6 +423,8 @@ function viewPeople() {
       <label class="field" for="cat-exp">Расходы</label><textarea id="cat-exp" rows="2">${esc(S.categories.expense.join(', '))}</textarea>
       <label class="field" for="cat-inc">Доходы</label><textarea id="cat-inc" rows="2">${esc(S.categories.income.join(', '))}</textarea>
       <button class="btn soft" data-act="saveCats">Сохранить категории</button></div>
+    <div class="card"><div class="setting-title">Оформление</div>
+      <label class="chk"><input type="checkbox" id="dark-toggle" ${document.documentElement.dataset.theme === 'dark' ? 'checked' : ''}> Тёмная тема</label></div>
     <div class="card"><div class="setting-title">Напоминания</div>
       <p class="setting-desc">За сколько дней показывать события в колокольчике.</p>
       <label class="field" for="notify-days">Дней заранее</label><input id="notify-days" type="number" min="0" max="30" value="${S.settings.notifyDaysAhead}">
@@ -484,6 +495,8 @@ function render() {
 function bindChange() {
   const me = $('#me-select');
   if (me) me.onchange = () => { ME = me.value; write('as.me', ME); render(); };
+  const dt = $('#dark-toggle');
+  if (dt) dt.onchange = () => { const mode = dt.checked ? 'dark' : 'light'; write('as.theme', mode); applyTheme(mode); };
   const imp = $('#import-file');
   if (imp) imp.onchange = async (e) => {
     const file = e.target.files[0];
@@ -745,6 +758,7 @@ async function loadBase() {
 }
 
 async function init() {
+  applyTheme(read('as.theme', 'light'));
   $('#modal-close').onclick = closeModal;
   $('#modal').onclick = (e) => { if (e.target.id === 'modal') closeModal(); };
   try {
