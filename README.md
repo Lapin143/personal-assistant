@@ -58,3 +58,20 @@ Settings → Pages → Source: Deploy from a branch → `main`, папка `/ (r
 3. Впишите `url` проекта и публичный `anon`-ключ в `config.js`.
 
 > Внимание: эта схема без входа в аккаунт. Любой, кто знает URL и ключ, может читать и менять данные. Ключ попадает в публичный код GitHub Pages. Для приватных данных нужна авторизация (Supabase Auth) и более строгие политики. Это следующий шаг.
+
+## Вход и доступ (Supabase Auth)
+
+Приложение открывается только после входа по email и паролю. Регистрация закрыта.
+
+Настройка в панели Supabase (один раз):
+1. **Authentication → Sign In / Providers → Email**: выключите «Allow new users to sign up».
+2. **Authentication → Users → Add user**: создайте два аккаунта (владелец и супруга), задайте пароли и отметьте «Auto Confirm User».
+3. **SQL Editor** выполните (заменит анонимную политику):
+
+   ```sql
+   drop policy "family anon access" on family_data;
+   create policy "family members only" on family_data
+     for all to authenticated using (true) with check (true);
+   ```
+
+Вход сохраняется на устройстве. Кнопка «Выйти» в Настройках удаляет данные с этого устройства, в облаке они остаются.

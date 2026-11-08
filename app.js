@@ -1,7 +1,7 @@
 import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b2';
 import { featuresInit, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, feedHtml, cushionHtml, extraReminders,
   viewLists, viewIdeas, viewGifts, viewActivity, FEATURE_ADD, FEATURE_ACTIONS, logEvent } from './features.js?v=b2';
-import { pullRemote, queuePush } from './sync.js?v=b1';
+import { pullRemote, queuePush, authEnabled, signIn, signOutLocal, validToken, getSession } from './sync.js?v=b3';
 import { iso, todayIso, addDays, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js';
 
 // ---------- помощники ----------
@@ -443,6 +443,9 @@ function viewPeople() {
       <p class="setting-desc">За сколько дней показывать события в колокольчике.</p>
       <label class="field" for="notify-days">Дней заранее</label><input id="notify-days" type="number" min="0" max="30" value="${S.settings.notifyDaysAhead}">
       <div class="pill-row"><button class="btn soft" data-act="saveSettings">Сохранить</button></div></div>
+    <div class="card"><div class="setting-title">Аккаунт</div>
+      <p class="setting-desc">Вошли как ${esc(getSession() ? getSession().email : '—')}. Выход удаляет данные с этого устройства, в облаке они остаются.</p>
+      <div class="pill-row"><button class="btn soft" data-act="logout">Выйти</button></div></div>
     <div class="card"><div class="setting-title">Данные</div>
       <p class="setting-desc">Экспорт сохраняет всё в файл. Не кладите этот файл в публичный репозиторий: в нём финансы.</p>
       <div class="pill-row"><button class="btn" data-act="exportData">Экспорт</button>
@@ -658,6 +661,7 @@ const ADD = {
 
 const ACTIONS = {
   ...FEATURE_ACTIONS,
+  logout: () => { signOutLocal(); localStorage.removeItem('as.data'); location.reload(); return false; },
   sec: (d) => { SEC = d.v; },
   finMonth: (d) => { FIN_MONTH = shiftMonth(FIN_MONTH, Number(d.d)); },
   finTab: (d) => { FIN_TAB = d.v; },
@@ -786,6 +790,44 @@ const plannerCtx = {
   addTransaction: (t) => S.transactions.push({ id: uid(), ...t, account: t.account || (S.accounts[0] || {}).id || '' }),
 };
 
+// ---------- вход ----------
+const LOGIN_ERRORS = { 'Invalid login credentials': 'Неверный email или пароль', 'Email not confirmed': 'Email не подтверждён: попросите владельца подтвердить аккаунт' };
+
+function showLogin() {
+  const actions = document.querySelector('.hero-actions');
+  if (actions) actions.style.display = 'none';
+  $('#sections').innerHTML = '';
+  $('#hero-title').textContent = 'Вход';
+  $('#hero-sub').textContent = 'Семейный ассистент';
+  $('#main').innerHTML = `<div class="card">
+    <div class="setting-title">Войти в Ассистент</div>
+    <p class="setting-desc">Вход нужен один раз на устройство. Регистрация закрыта, аккаунты создаёт владелец.</p>
+    <div class="form">
+      <label class="field" for="li-email">Email</label><input id="li-email" type="email" autocomplete="username" inputmode="email">
+      <label class="field" for="li-pass">Пароль</label><input id="li-pass" type="password" autocomplete="current-password">
+      <div class="warn-box" id="li-err" hidden></div>
+      <button class="btn block" id="li-go">Войти</button></div></div>`;
+  const go = async () => {
+    const email = $('#li-email').value.trim();
+    const password = $('#li-pass').value;
+    const err = $('#li-err');
+    err.hidden = true;
+    if (!email || !password) { err.textContent = 'Введите email и пароль'; err.hidden = false; return; }
+    $('#li-go').disabled = true;
+    try {
+      await signIn(email, password);
+      location.reload();
+    } catch (e) {
+      const text = e instanceof TypeError ? 'Нет связи с сервером. Проверьте интернет.' : (LOGIN_ERRORS[e.message] || e.message);
+      err.textContent = text;
+      err.hidden = false;
+      $('#li-go').disabled = false;
+    }
+  };
+  $('#li-go').onclick = go;
+  $('#li-pass').onkeydown = (e) => { if (e.key === 'Enter') go(); };
+}
+
 // ---------- запуск ----------
 async function loadBase() {
   return (await fetch('data.json', { cache: 'no-store' })).json();
@@ -795,6 +837,7 @@ async function init() {
   applyTheme(read('as.theme', 'light'));
   $('#modal-close').onclick = closeModal;
   $('#modal').onclick = (e) => { if (e.target.id === 'modal') closeModal(); };
+  if (authEnabled() && !(await validToken())) { showLogin(); return; }
   try {
     const base = await loadBase();
     S = { ...base, ...read('as.data', {}) };
