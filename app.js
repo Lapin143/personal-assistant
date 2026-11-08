@@ -1,4 +1,6 @@
-import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b1';
+import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b2';
+import { featuresInit, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, feedHtml, cushionHtml, extraReminders,
+  viewLists, viewIdeas, viewGifts, viewActivity, FEATURE_ADD, FEATURE_ACTIONS, logEvent } from './features.js?v=b2';
 import { pullRemote, queuePush } from './sync.js?v=b1';
 import { iso, todayIso, addDays, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js';
 
@@ -40,7 +42,12 @@ const ICON = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   left: '<path d="M15 6l-6 6 6 6"/>',
   right: '<path d="M9 6l6 6-6 6"/>',
-  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  list: '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
+  gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v9h14v-9M12 8v13M12 8c-2-4-6-4-6-1s6 1 6 1zM12 8c2-4 6-4 6-1s-6 1-6 1z"/>',
+  walk: '<circle cx="13" cy="4" r="2"/><path d="M9 21l2-6 3 2v5M8 10l2-3 4 1 2 4M11 14l-2 2"/>',
+  idea: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10c1 1 1 2 1 3h6c0-1 0-2 1-3a6 6 0 0 0-4-10z"/>'
 };
 const svg = (name, size = 22) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
 const X = svg('x', 18);
@@ -81,9 +88,12 @@ const NAV = [
   ['dash', 'home', 'Главная'], ['menu', 'menu', 'Меню'], ['fin', 'wallet', 'Финансы'],
   ['goals', 'target', 'Цели'], ['more', 'dots', 'Ещё']
 ];
-const MORE_SECTIONS = ['more', 'rem', 'car', 'house', 'settings'];
+const MORE_SECTIONS = ['more', 'rem', 'car', 'house', 'lists', 'ideas', 'gifts', 'activity', 'settings'];
 const MORE_ITEMS = [['rem', 'calendar', 'Напоминания', 'Свои напоминания и даты'], ['car', 'car', 'Авто', 'Машины, расходы, сроки'],
-  ['house', 'house', 'Дом', 'Дела по дому и счётчики'], ['settings', 'gear', 'Настройки', 'Участники, счета, категории, данные']];
+  ['house', 'house', 'Дом', 'Дела по дому и счётчики'],
+  ['lists', 'list', 'Списки', 'Покупки и любые списки дел'], ['ideas', 'idea', 'Идеи и поездки', 'Задумки, бюджет, чек-листы'],
+  ['gifts', 'gift', 'Подарки', 'Даты, идеи, бюджет'], ['activity', 'walk', 'Активность', 'Шаги по дням'],
+  ['settings', 'gear', 'Настройки', 'Участники, счета, категории, данные']];
 
 // ---------- формы ----------
 function fieldHtml(f) {
@@ -195,6 +205,7 @@ function viewDash() {
   const s = monthSummary(S, ym, ME);
   const up = upcoming(S, t, 14);
   return `
+    ${dashTop()}
     ${plannerSummaryHtml()}
     <div class="grid-2" style="margin-bottom:12px">
       <div class="stat"><div class="lbl">Доходы, ${monthName(ym)}</div><div class="val pos">${money(s.income)}</div></div>
@@ -204,6 +215,7 @@ function viewDash() {
       ${up.length ? up.map(liUp).join('') : '<div class="empty">Ничего не запланировано</div>'}</div>
     <div class="card"><div class="setting-title">Цели</div>
       ${S.goals.length ? S.goals.slice(0, 3).map(goalRow).join('') : '<div class="empty">Целей пока нет</div>'}</div>
+    ${feedHtml()}
     `;
 }
 
@@ -216,9 +228,10 @@ function viewFin() {
   const stats = `<div class="grid-2" style="margin-bottom:12px">
     <div class="stat"><div class="lbl">Доходы</div><div class="val pos">${money(s.income)}</div></div>
     <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(s.expense)}</div></div></div>`;
-  const tabs = `<div class="tabline">${[['ops', 'Операции'], ['rec', 'Регулярные'], ['debt', 'Долги']]
+  const tabs = `<div class="tabline">${[['ops', 'Операции'], ['rec', 'Регулярные'], ['debt', 'Долги'], ...FIN_TABS]
     .map(([v, l]) => `<button class="${FIN_TAB === v ? 'active' : ''}" data-act="finTab" data-v="${v}">${l}</button>`).join('')}</div>`;
 
+  if (isFinExtraTab(FIN_TAB)) return top + stats + tabs + finTabHtml(FIN_TAB, FIN_MONTH);
   let body = '';
   if (FIN_TAB === 'ops') {
     const cats = Object.entries(s.byCategory).sort((a, b) => b[1] - a[1]);
@@ -292,7 +305,7 @@ function viewGoals() {
       <button class="${GOAL_KIND === 'wish' ? 'active' : ''}" data-act="goalKind" data-v="wish">Вишлист</button></div>`;
   if (GOAL_KIND === 'wish') return tabs + wishHtml();
   const list = S.goals.filter((g) => g.kind === GOAL_KIND);
-  return tabs + `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn" data-act="addGoal">+ Цель</button></div>
+  return tabs + (GOAL_KIND === 'long' ? cushionHtml() : '') + `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn" data-act="addGoal">+ Цель</button></div>
     ${list.length ? list.map(goalCard).join('') : '<div class="card empty">Целей этого типа пока нет</div>'}`;
 }
 
@@ -437,15 +450,17 @@ function viewPeople() {
       <button class="btn danger" data-act="resetData">Сбросить всё</button></div></div>`;
 }
 
-const TITLE = { ...Object.fromEntries(SECTIONS), settings: 'Настройки', more: 'Ещё' };
+const TITLE = { ...Object.fromEntries(SECTIONS), settings: 'Настройки', more: 'Ещё', lists: 'Списки', ideas: 'Идеи и поездки', gifts: 'Подарки', activity: 'Активность' };
 
-const VIEWS = { dash: viewDash, fin: viewFin, goals: viewGoals, rem: viewRem, menu: plannerHtml, car: viewCar, house: viewHouse, more: viewMore, settings: viewPeople };
+const VIEWS = { dash: viewDash, fin: viewFin, goals: viewGoals, rem: viewRem, menu: plannerHtml, car: viewCar, house: viewHouse, more: viewMore, settings: viewPeople,
+  lists: viewLists, ideas: viewIdeas, gifts: viewGifts, activity: viewActivity };
 
 // ---------- колокольчик: напоминания, прочтение и платежи к подтверждению ----------
 // Прочтение хранится по каждому участнику: S.reads[ключ] = [id людей, которые открыли].
 const remKey = (it) => `${it.kind}|${it.title}|${it.date}`;
 const isReadBy = (it, pid) => ((S.reads || {})[remKey(it)] || []).includes(pid);
-const reminders = () => upcoming(S, todayIso(), S.settings.notifyDaysAhead);
+const reminders = () => [...upcoming(S, todayIso(), S.settings.notifyDaysAhead), ...extraReminders(todayIso(), S.settings.notifyDaysAhead)]
+  .sort((a, b) => (a.date < b.date ? -1 : 1));
 const unreadCount = () => reminders().filter((it) => !isReadBy(it, ME)).length;
 const bellTotal = () => unreadCount() + pendingPayments().length;
 
@@ -478,6 +493,7 @@ function refreshBellIfOpen() {
 // ---------- отрисовка ----------
 function render() {
   if (!S) return;
+  ensureData(S);
   $('#hero-title').textContent = TITLE[SEC];
   $('#hero-sub').textContent = `${fmtDate(todayIso())} · ${personName(ME) || 'Гость'}`;
   $('#sections').innerHTML = NAV.map(([id, ic, label]) => {
@@ -518,6 +534,7 @@ function bindChange() {
 
 // ---------- действия (клики) ----------
 const ADD = {
+  ...FEATURE_ADD,
   addOp: () => openForm('Новая операция', [
     { k: 'type', t: 'select', l: 'Тип', opts: [['expense', 'Расход'], ['income', 'Доход']], v: 'expense' },
     { k: 'amount', t: 'number', l: 'Сумма', ph: '0' },
@@ -532,6 +549,7 @@ const ADD = {
     if (!o.date) return 'Укажите дату';
     S.transactions.push({ id: uid(), type: o.type, amount: o.amount, date: o.date, category: o.category || 'Прочее',
       account: o.account, personId: o.personId, private: o.private, note: o.note });
+    logEvent(`${o.type === 'income' ? 'Доход' : 'Расход'} ${money(o.amount)}${o.category ? ' · ' + o.category : ''}`);
     return null;
   }),
   addRec: () => openForm('Регулярный платёж', [
@@ -639,6 +657,7 @@ const ADD = {
 };
 
 const ACTIONS = {
+  ...FEATURE_ACTIONS,
   sec: (d) => { SEC = d.v; },
   finMonth: (d) => { FIN_MONTH = shiftMonth(FIN_MONTH, Number(d.d)); },
   finTab: (d) => { FIN_TAB = d.v; },
@@ -650,10 +669,10 @@ const ACTIONS = {
     S[d.coll] = S[d.coll].filter((x) => x.id !== d.id);
   },
   toggleRec: (d) => { const r = S.recurring.find((x) => x.id === d.id); r.active = !r.active; },
-  payOk: (d) => { resolvePayment(d.id, d.ym, 'ok'); refreshBellIfOpen(); },
+  payOk: (d) => { resolvePayment(d.id, d.ym, 'ok'); logEvent('Проведён регулярный платёж'); refreshBellIfOpen(); },
   paySkip: (d) => { resolvePayment(d.id, d.ym, 'skip'); refreshBellIfOpen(); },
   wishBought: (d) => { const w = S.wishes.find((x) => x.id === d.id); w.bought = !w.bought; },
-  taskDone: (d) => { const t = S.homeTasks.find((x) => x.id === d.id); t.lastDone = todayIso(); },
+  taskDone: (d) => { const t = S.homeTasks.find((x) => x.id === d.id); t.lastDone = todayIso(); logEvent(`Сделано по дому: ${t.title}`); },
   topUp: (d) => {
     const g = S.goals.find((x) => x.id === d.id);
     openForm('Пополнить: ' + g.title, [{ k: 'amt', t: 'number', l: 'Сумма' }], (o) => {
@@ -763,6 +782,7 @@ const plannerCtx = {
     $('#modal').classList.remove('hidden');
   },
   closeModal,
+  log: logEvent,
   addTransaction: (t) => S.transactions.push({ id: uid(), ...t, account: t.account || (S.accounts[0] || {}).id || '' }),
 };
 
@@ -789,6 +809,10 @@ async function init() {
       write('as.data', S);
     }
     if (!S.menu) S.menu = structuredClone(base.menu);
+    featuresInit({
+      S: () => S, me: () => ME, esc, money, uid, todayIso, toast, svg, personOpts, personName,
+      save, render: () => { save(); render(); }, openForm, openModal: plannerCtx.openModal, closeModal,
+    });
     plannerInit(plannerCtx);
     render();
   } catch (err) {

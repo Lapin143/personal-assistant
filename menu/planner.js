@@ -128,7 +128,7 @@ const KW = [
 const guessCat = (name) => (KW.find(([, re]) => re.test(name)) || [null])[0] || 'other';
 
 // Строки чека: последнее число с двумя знаками после запятой — цена позиции.
-function parseReceiptLines(lines) {
+export function parseReceiptLines(lines) {
   const items = [];
   let foundTotal = null;
   for (const raw of lines) {
@@ -147,7 +147,26 @@ function parseReceiptLines(lines) {
   return { items, sum, total: foundTotal ?? sum };
 }
 
-async function readReceiptLines(file) {
+const TESS_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    if (window.Tesseract) return res();
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = res;
+    s.onerror = () => rej(new Error('не удалось загрузить распознавание'));
+    document.head.appendChild(s);
+  });
+}
+// Фото чека распознаём на устройстве (Tesseract, русский и английский).
+async function ocrLines(file) {
+  await loadScript(TESS_URL);
+  const { data } = await window.Tesseract.recognize(file, 'rus+eng');
+  return data.text.split(/\r?\n/);
+}
+
+export async function readReceiptLines(file) {
+  if (/\.(jpe?g|png|webp)$/i.test(file.name) || /^image\//.test(file.type)) return ocrLines(file);
   if (/\.pdf$/i.test(file.name)) {
     const pdfjs = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.mjs');
     pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs';
@@ -458,8 +477,8 @@ function bindPurchase() {
     return;
   }
   pane.innerHTML = `
-    <p class="muted" style="margin:0 0 10px">Загрузите чек файлом: PDF с текстом, CSV или TXT. Фото пока не распознаём.</p>
-    <label class="btn soft block" style="cursor:pointer">Выбрать файл<input id="p-file" type="file" accept=".pdf,.csv,.txt,text/plain,application/pdf" class="hidden"></label>
+    <p class="muted" style="margin:0 0 10px">Загрузите чек: PDF с текстом, CSV, TXT или фото (JPG, PNG). Фото распознаются на устройстве и могут ошибаться.</p>
+    <label class="btn soft block" style="cursor:pointer">Выбрать файл<input id="p-file" type="file" accept=".pdf,.csv,.txt,.jpg,.jpeg,.png,.webp,text/plain,application/pdf,image/*" class="hidden"></label>
     <div id="p-result"></div>`;
   pane.querySelector('#p-file').onchange = async (e) => {
     const file = e.target.files[0];
@@ -524,6 +543,7 @@ function savePurchase({ date, store, total, items, method }) {
     type: 'expense', amount: total, date, category: 'Продукты', account: '', personId: '', private: false,
     note: `Закупка: ${weekLabel(weekStart)}${store ? ' · ' + store : ''}`, fromPurchase: id
   });
+  ctx.log?.(`Закупка ${ctx.money(total)}${store ? ' · ' + store : ''}`);
   ctx.closeModal();
   ctx.toast('Закупка сохранена, операция добавлена');
   TAB = 'stats';
