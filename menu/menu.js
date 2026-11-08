@@ -317,6 +317,7 @@ function shoppingHtml() {
       </div>
       <div class="bar"><div style="width:${pct}%"></div></div>
     </div>
+    ${weekPlanHtml()}
     ${section('Закупка на месяц', 'Покупаем один раз, потом берём только скоропортящееся', D.bulk, 'b')}
     ${section('Каждую неделю', 'Хлеб, зелень, фрукты и овощи для салатов', D.weekly, 'w')}
 
@@ -339,6 +340,29 @@ function shoppingHtml() {
         </div>`).join('') : '<div class="empty">Чеков пока нет</div>'}
       ${receipts.length ? `<div class="total-line"><span>Всего потрачено</span><span>${sum.toLocaleString('ru-RU')} ₽</span></div>` : ''}
     </div>`;
+}
+
+// Продукты на ближайшие 7 дней по текущему плану и заменам.
+// Состав берётся из описания блюда (граммовки — как записано в составе).
+function weekPlanHtml() {
+  const t = Math.max(todayDay(), 1);
+  const days = [];
+  for (let n = t; n < t + 7 && n <= D.plan.length; n++) days.push(n);
+  if (!days.length) return '';
+  const seen = new Map();
+  for (const n of days) {
+    for (const slot of ['breakfast', 'lunch', 'dinner']) {
+      const name = currentMeal(n, slot);
+      if (name && !seen.has(name)) seen.set(name, dishInfo(name).composition);
+    }
+  }
+  const rows = [...seen].map(([name, comp]) => `<div class="li">
+    <div class="main"><div class="t">${esc(name)}</div>
+    <div class="s">${esc(comp || 'состав не указан')}</div></div></div>`).join('');
+  return `<div class="shop-card">
+    <h3>Продукты на ${days.length} дн.</h3>
+    <div class="muted">По текущему плану и заменам. Граммовки взяты из состава блюд.</div>
+    ${rows}</div>`;
 }
 
 // ---------- вкладка «Ещё» ----------

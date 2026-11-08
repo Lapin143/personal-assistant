@@ -16,10 +16,33 @@ const personName = (id) => (S.people.find((p) => p.id === id) || {}).name || '';
 const personOpts = () => [['', 'Общее'], ...S.people.map((p) => [p.id, p.name])];
 const catAll = () => [...new Set([...S.categories.expense, ...S.categories.income])].map((c) => [c, c]);
 const accOpts = () => S.accounts.map((a) => [a.id, a.name]);
-const carOpts = () => S.cars.map((c) => [c.id, `${c.make} ${c.model}`]);
-const meterOpts = () => S.meters.map((m) => [m.id, m.name]);
 const need = (o, keys) => keys.every((k) => o[k] !== '' && o[k] !== undefined && !(typeof o[k] === 'number' && isNaN(o[k])));
 const safeUrl = (u) => (/^https?:\/\//.test(u || '') ? esc(u) : '');
+
+// Иконки: один набор линий, один стиль.
+const ICON = {
+  home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>',
+  menu: '<path d="M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10"/><path d="M17 21V3c-2 1-3 3-3 6s1 4 3 4"/>',
+  wallet: '<rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M16 15h2"/>',
+  target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+  dots: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',
+  bell: '<path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  car: '<path d="M5 16v-5l2-5h10l2 5v5"/><path d="M3 16h18v3H3z"/><circle cx="7.5" cy="16" r="1.5"/><circle cx="16.5" cy="16" r="1.5"/>',
+  house: '<path d="M4 11l8-7 8 7v9H4z"/><path d="M10 20v-5h4v5"/>',
+  pause: '<path d="M9 5v14M15 5v14"/>',
+  play: '<path d="M7 5l12 7-12 7z"/>',
+  check: '<path d="M5 12l5 5 9-10"/>',
+  circle: '<circle cx="12" cy="12" r="8"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  left: '<path d="M15 6l-6 6 6 6"/>',
+  right: '<path d="M9 6l6 6-6 6"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'
+};
+const svg = (name, size = 22) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
+const X = svg('x', 18);
 
 function toast(msg) {
   const t = document.createElement('div');
@@ -39,10 +62,18 @@ let GOAL_KIND = 'long';
 let HOUSE_TAB = 'tasks';
 let CAR_ID = null;
 
+// Разделы: нижняя панель (5 пунктов) и разделы внутри «Ещё».
 const SECTIONS = [
-  ['dash', '🏠', 'Главная'], ['menu', '🍽', 'Меню'], ['fin', '💰', 'Финансы'], ['goals', '🎯', 'Цели'],
-  ['rem', '📅', 'Напоминания'], ['car', '🚗', 'Авто'], ['house', '🏡', 'Дом']
+  ['dash', 'Главная'], ['menu', 'Меню'], ['fin', 'Финансы'], ['goals', 'Цели'],
+  ['rem', 'Напоминания'], ['car', 'Авто'], ['house', 'Дом']
 ];
+const NAV = [
+  ['dash', 'home', 'Главная'], ['menu', 'menu', 'Меню'], ['fin', 'wallet', 'Финансы'],
+  ['goals', 'target', 'Цели'], ['more', 'dots', 'Ещё']
+];
+const MORE_SECTIONS = ['more', 'rem', 'car', 'house', 'settings'];
+const MORE_ITEMS = [['rem', 'calendar', 'Напоминания', 'Свои напоминания и даты'], ['car', 'car', 'Авто', 'Машины, расходы, сроки'],
+  ['house', 'house', 'Дом', 'Дела по дому и счётчики'], ['settings', 'gear', 'Настройки', 'Участники, счета, категории, данные']];
 
 // ---------- формы ----------
 function fieldHtml(f) {
@@ -50,12 +81,12 @@ function fieldHtml(f) {
   const val = f.v ?? '';
   if (f.t === 'check') return `<label class="chk"><input type="checkbox" id="${id}" ${f.v ? 'checked' : ''}> ${esc(f.l)}</label>`;
   if (f.t === 'select') {
-    return `<label class="field">${esc(f.l)}</label><select id="${id}">${f.opts.map(([v, l]) =>
+    return `<label class="field" for="${id}">${esc(f.l)}</label><select id="${id}">${f.opts.map(([v, l]) =>
       `<option value="${esc(v)}" ${String(v) === String(val) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
   }
-  if (f.t === 'area') return `<label class="field">${esc(f.l)}</label><textarea id="${id}" rows="2">${esc(val)}</textarea>`;
+  if (f.t === 'area') return `<label class="field" for="${id}">${esc(f.l)}</label><textarea id="${id}" rows="2">${esc(val)}</textarea>`;
   const inputmode = f.t === 'number' ? 'decimal' : '';
-  return `<label class="field">${esc(f.l)}</label><input id="${id}" type="${f.t || 'text'}" inputmode="${inputmode}" value="${esc(val)}" placeholder="${esc(f.ph || '')}">`;
+  return `<label class="field" for="${id}">${esc(f.l)}</label><input id="${id}" type="${f.t || 'text'}" inputmode="${inputmode}" value="${esc(val)}" placeholder="${esc(f.ph || '')}">`;
 }
 
 function openForm(title, fields, onSave) {
@@ -95,10 +126,57 @@ const opRow = (t) => `<div class="li">
   <div class="main"><div class="t">${esc(t.category)}${t.private ? '<span class="badge-private">личное</span>' : ''}</div>
   <div class="s">${fmtDate(t.date)}${t.note ? ' · ' + esc(t.note) : ''}${t.personId ? ' · ' + esc(personName(t.personId)) : ''}</div></div>
   <div class="amt ${t.type === 'income' ? 'inc' : 'exp'}">${t.type === 'income' ? '+' : '−'}${money(t.amount)}</div>
-  <button class="icon-btn" data-act="del" data-coll="transactions" data-id="${t.id}" aria-label="Удалить">✕</button></div>`;
+  <button class="icon-btn" data-act="del" data-coll="transactions" data-id="${t.id}" aria-label="Удалить">${X}</button></div>`;
 
 const CAR_TYPES = { fuel: 'Топливо', service: 'ТО', repair: 'Ремонт', wash: 'Мойка', parking: 'Парковка', fine: 'Штраф', other: 'Прочее' };
 const REPEAT = { none: 'однократно', month: 'каждый месяц', year: 'каждый год' };
+
+// ---------- регулярные платежи: операция появляется только после подтверждения ----------
+// Срок платежа в текущем месяце: день из настроек, но не позже последнего дня месяца.
+function dueDateOf(r, ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const last = new Date(y, m, 0).getDate();
+  return `${ym}-${String(Math.min(r.day, last)).padStart(2, '0')}`;
+}
+const payKey = (r, ym) => `${r.id}|${ym}`;
+
+// Платежи, срок которых уже наступил в этом месяце и которые ещё не проведены и не пропущены.
+function pendingPayments(today = todayIso()) {
+  const ym = today.slice(0, 7);
+  const done = S.confirmed || {};
+  return S.recurring
+    .filter((r) => r.active && dueDateOf(r, ym) <= today && !done[payKey(r, ym)])
+    .map((r) => ({ r, ym, date: dueDateOf(r, ym) }));
+}
+
+function resolvePayment(rid, ym, status) {
+  const r = S.recurring.find((x) => x.id === rid);
+  if (!r) return;
+  S.confirmed = S.confirmed || {};
+  if (status === 'ok') {
+    S.transactions.push({
+      id: uid(), type: 'expense', amount: r.amount, date: dueDateOf(r, ym), category: r.category || 'Прочее',
+      account: r.account || '', personId: r.personId || '', private: false,
+      note: `Регулярный: ${r.title}`, fromRecurring: r.id
+    });
+  }
+  S.confirmed[payKey(r, ym)] = { status, at: todayIso() };
+}
+
+function pendingHtml() {
+  const list = pendingPayments();
+  if (!list.length) return '';
+  return `<div class="card pending">
+    <div class="setting-title">К подтверждению</div>
+    <p class="setting-desc">Проведите платёж, когда он действительно прошёл. Пропущенный в учёт не попадёт.</p>
+    ${list.map(({ r, ym, date }) => `<div class="li">
+      <div class="main"><div class="t">${esc(r.title)}</div>
+      <div class="s">${fmtDate(date)} · ${esc(personName(r.personId) || 'Общее')}</div></div>
+      <div class="amt exp">−${money(r.amount)}</div>
+      <button class="btn soft" data-act="payOk" data-id="${r.id}" data-ym="${ym}">Провести</button>
+      <button class="icon-btn" data-act="paySkip" data-id="${r.id}" data-ym="${ym}" aria-label="Пропустить">${X}</button></div>`).join('')}
+  </div>`;
+}
 
 // ---------- разделы ----------
 function viewDash() {
@@ -122,9 +200,9 @@ function viewDash() {
 function viewFin() {
   const s = monthSummary(S, FIN_MONTH, ME);
   const top = `<div class="row" style="justify-content:space-between;margin-bottom:10px">
-    <button class="icon-btn" data-act="finMonth" data-d="-1" aria-label="Предыдущий месяц">←</button>
+    <button class="icon-btn" data-act="finMonth" data-d="-1" aria-label="Предыдущий месяц">${svg('left', 18)}</button>
     <strong style="text-transform:capitalize">${monthName(FIN_MONTH)}</strong>
-    <button class="icon-btn" data-act="finMonth" data-d="1" aria-label="Следующий месяц">→</button></div>`;
+    <button class="icon-btn" data-act="finMonth" data-d="1" aria-label="Следующий месяц">${svg('right', 18)}</button></div>`;
   const stats = `<div class="grid-2" style="margin-bottom:12px">
     <div class="stat"><div class="lbl">Доходы</div><div class="val pos">${money(s.income)}</div></div>
     <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(s.expense)}</div></div></div>`;
@@ -147,14 +225,15 @@ function viewFin() {
         ${ops.length ? ops.map(opRow).join('') : '<div class="empty">Операций за месяц нет</div>'}</div>`;
   } else if (FIN_TAB === 'rec') {
     const monthly = S.recurring.filter((r) => r.active).reduce((a, r) => a + Number(r.amount), 0);
+    body += pendingHtml();
     body += `<div class="card"><div class="row" style="justify-content:space-between">
       <div class="setting-title">Регулярные платежи</div><button class="btn" data-act="addRec">+ Платёж</button></div>
       ${S.recurring.length ? S.recurring.map((r) => `<div class="li">
         <div class="main"><div class="t">${esc(r.title)}${r.personId ? `<span class="badge-private">${esc(personName(r.personId))}</span>` : ''}</div>
         <div class="s">${r.day}-го числа · ${esc(r.category || '')}${r.active ? '' : ' · на паузе'}</div></div>
         <div class="amt">${money(r.amount)}</div>
-        <button class="icon-btn" data-act="toggleRec" data-id="${r.id}" aria-label="Пауза">${r.active ? '⏸' : '▶'}</button>
-        <button class="icon-btn" data-act="del" data-coll="recurring" data-id="${r.id}" aria-label="Удалить">✕</button></div>`).join('')
+        <button class="icon-btn" data-act="toggleRec" data-id="${r.id}" aria-label="${r.active ? 'Пауза' : 'Возобновить'}">${svg(r.active ? 'pause' : 'play', 18)}</button>
+        <button class="icon-btn" data-act="del" data-coll="recurring" data-id="${r.id}" aria-label="Удалить">${X}</button></div>`).join('')
         : '<div class="empty">Регулярных платежей нет</div>'}
       <p class="note">Итого в месяц: ${money(monthly)}</p></div>`;
   } else {
@@ -169,7 +248,7 @@ function viewFin() {
           <div class="bar"><div style="width:${paid}%"></div></div>
           <div class="row" style="margin-top:8px">
             <button class="btn soft" data-act="payDebt" data-id="${d.id}">Внести платёж</button>
-            <button class="icon-btn" data-act="del" data-coll="debts" data-id="${d.id}" aria-label="Удалить">✕</button></div></div>`;
+            <button class="icon-btn" data-act="del" data-coll="debts" data-id="${d.id}" aria-label="Удалить">${X}</button></div></div>`;
       }).join('') : '<div class="empty">Долгов нет</div>'}</div>`;
   }
   return top + stats + tabs + body;
@@ -187,7 +266,7 @@ function goalCard(g) {
     <div class="row" style="justify-content:space-between">
       <div><div class="setting-title" style="margin:0">${esc(g.title)}</div>
       <div class="note">${personName(g.personId) || 'Общая'}${g.deadline ? ' · до ' + fmtDate(g.deadline) : ''}</div></div>
-      <button class="icon-btn" data-act="del" data-coll="goals" data-id="${g.id}" aria-label="Удалить">✕</button></div>
+      <button class="icon-btn" data-act="del" data-coll="goals" data-id="${g.id}" aria-label="Удалить">${X}</button></div>
     <div class="row" style="justify-content:space-between;margin-top:10px"><b>${money(g.saved)}</b>
       <span class="note">из ${money(g.target)} · ${pct}%</span></div>
     <div class="bar"><div style="width:${pct}%"></div></div>
@@ -198,9 +277,9 @@ function goalCard(g) {
 
 function viewGoals() {
   const tabs = `<div class="tabline">
-      <button class="${GOAL_KIND === 'long' ? 'active' : ''}" data-act="goalKind" data-v="long">🏔 Долгосрочные</button>
-      <button class="${GOAL_KIND === 'short' ? 'active' : ''}" data-act="goalKind" data-v="short">⚡ Краткосрочные</button>
-      <button class="${GOAL_KIND === 'wish' ? 'active' : ''}" data-act="goalKind" data-v="wish">🎁 Вишлист</button></div>`;
+      <button class="${GOAL_KIND === 'long' ? 'active' : ''}" data-act="goalKind" data-v="long">Долгосрочные</button>
+      <button class="${GOAL_KIND === 'short' ? 'active' : ''}" data-act="goalKind" data-v="short">Краткосрочные</button>
+      <button class="${GOAL_KIND === 'wish' ? 'active' : ''}" data-act="goalKind" data-v="wish">Вишлист</button></div>`;
   if (GOAL_KIND === 'wish') return tabs + wishHtml();
   const list = S.goals.filter((g) => g.kind === GOAL_KIND);
   return tabs + `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn" data-act="addGoal">+ Цель</button></div>
@@ -213,16 +292,16 @@ function wishHtml() {
   const sorted = (list) => [...list].sort((a, b) => (a.bought - b.bought) || (a.priority - b.priority));
   const known = (id) => S.people.some((p) => p.id === id);
   const groups = [
-    ...S.people.map((p) => ({ title: p.name, icon: '👤', list: sorted(S.wishes.filter((w) => w.personId === p.id)) })),
-    { title: 'Общие', icon: '🏠', list: sorted(S.wishes.filter((w) => !known(w.personId))) }
+    ...S.people.map((p) => ({ title: p.name, list: sorted(S.wishes.filter((w) => w.personId === p.id)) })),
+    { title: 'Общие', list: sorted(S.wishes.filter((w) => !known(w.personId))) }
   ];
   const row = (w) => `<div class="li">
-      <button class="icon-btn" data-act="wishBought" data-id="${w.id}" aria-label="Отметить купленным">${w.bought ? '✅' : '⬜'}</button>
+      <button class="icon-btn" data-act="wishBought" data-id="${w.id}" aria-label="${w.bought ? 'Отметить непокупленным' : 'Отметить купленным'}">${svg(w.bought ? 'check' : 'circle', 18)}</button>
       <div class="main"><div class="t" style="${w.bought ? 'text-decoration:line-through;color:var(--done)' : ''}">${esc(w.title)}</div>
         <div class="s">${w.price ? money(w.price) + ' · ' : ''}${prio[w.priority] || ''}${safeUrl(w.url) ? ` · <a href="${safeUrl(w.url)}" target="_blank" rel="noopener">ссылка</a>` : ''}</div></div>
-      <button class="icon-btn" data-act="del" data-coll="wishes" data-id="${w.id}" aria-label="Удалить">✕</button></div>`;
+      <button class="icon-btn" data-act="del" data-coll="wishes" data-id="${w.id}" aria-label="Удалить">${X}</button></div>`;
   return `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn" data-act="addWish">+ Желание</button></div>
-    ${groups.map((g) => `<div class="card"><div class="setting-title">${g.icon} ${esc(g.title)}</div>
+    ${groups.map((g) => `<div class="card"><div class="setting-title">${esc(g.title)}</div>
       ${g.list.length ? g.list.map(row).join('') : '<div class="empty">Желаний пока нет</div>'}</div>`).join('')}`;
 }
 
@@ -235,7 +314,7 @@ function viewRem() {
       ${S.reminders.length ? S.reminders.map((r) => `<div class="li">
         <div class="main"><div class="t">${esc(r.title)}</div>
         <div class="s">${fmtDate(r.date)} · ${REPEAT[r.repeat] || ''}${r.personId ? ' · ' + esc(personName(r.personId)) : ''}</div></div>
-        <button class="icon-btn" data-act="del" data-coll="reminders" data-id="${r.id}" aria-label="Удалить">✕</button></div>`).join('')
+        <button class="icon-btn" data-act="del" data-coll="reminders" data-id="${r.id}" aria-label="Удалить">${X}</button></div>`).join('')
         : '<div class="empty">Своих напоминаний нет</div>'}</div>`;
 }
 
@@ -251,7 +330,7 @@ function carCard(c) {
       <div data-act="carOpen" data-id="${c.id}" style="cursor:pointer;flex:1">
         <div class="setting-title" style="margin:0">${esc(c.make)} ${esc(c.model)} ${c.year ? `<span class="note">${esc(c.year)}</span>` : ''}</div>
         <div class="note">${esc(c.plate || '')}${c.mileage ? ' · пробег ' + Number(c.mileage).toLocaleString('ru-RU') + ' км' : ''}</div></div>
-      <button class="icon-btn" data-act="del" data-coll="cars" data-id="${c.id}" aria-label="Удалить">✕</button></div>
+      <button class="icon-btn" data-act="del" data-coll="cars" data-id="${c.id}" aria-label="Удалить">${X}</button></div>
     <div class="grid-2" style="margin-top:10px">
       <div class="stat"><div class="lbl">За месяц</div><div class="val">${money(month)}</div></div>
       <div class="stat"><div class="lbl">Расход топлива</div><div class="val">${fs.avg ? fs.avg.toFixed(1) + ' л/100 км' : '—'}</div></div></div>
@@ -263,7 +342,7 @@ function carCard(c) {
         <div class="main"><div class="t">${CAR_TYPES[e.type] || e.type}${e.liters ? ` · ${e.liters} л` : ''}</div>
         <div class="s">${fmtDate(e.date)}${e.mileage ? ' · ' + Number(e.mileage).toLocaleString('ru-RU') + ' км' : ''}${e.note ? ' · ' + esc(e.note) : ''}</div></div>
         <div class="amt exp">−${money(e.amount)}</div>
-        <button class="icon-btn" data-act="del" data-coll="carExpenses" data-id="${e.id}" aria-label="Удалить">✕</button></div>`).join('')
+        <button class="icon-btn" data-act="del" data-coll="carExpenses" data-id="${e.id}" aria-label="Удалить">${X}</button></div>`).join('')
         : '<div class="empty">Расходов пока нет</div>'}` : ''}
   </div>`;
 }
@@ -287,7 +366,7 @@ function viewHouse() {
           <div class="main"><div class="t">${esc(x.title)}</div>
           <div class="s">Каждые ${x.everyDays} дн. · ${overdue ? 'просрочено · ' : ''}${fmtDate(due)}${personName(x.assignee) ? ' · ' + esc(personName(x.assignee)) : ''}</div></div>
           <button class="btn soft" data-act="taskDone" data-id="${x.id}">Сделано</button>
-          <button class="icon-btn" data-act="del" data-coll="homeTasks" data-id="${x.id}" aria-label="Удалить">✕</button></div>`;
+          <button class="icon-btn" data-act="del" data-coll="homeTasks" data-id="${x.id}" aria-label="Удалить">${X}</button></div>`;
       }).join('') : '<div class="empty">Дел по дому пока нет</div>'}</div>`;
   }
   return tabs + `<div class="card">${S.meters.map((m) => {
@@ -298,10 +377,20 @@ function viewHouse() {
     return `<div class="li">
       <div class="main"><div class="t">${esc(m.name)}</div>
       <div class="s">${last ? `Последнее: ${last.value} ${esc(m.unit)} · ${fmtDate(last.date)}${used !== null ? ` · расход ${used.toFixed(1)} ${esc(m.unit)}` : ''}` : 'Показаний ещё нет'}</div></div>
-      <button class="icon-btn" data-act="addReading" data-id="${m.id}" aria-label="Внести показание">＋</button>
-      <button class="icon-btn" data-act="del" data-coll="meters" data-id="${m.id}" aria-label="Удалить">✕</button></div>`;
+      <button class="icon-btn" data-act="addReading" data-id="${m.id}" aria-label="Внести показание">${svg('plus', 18)}</button>
+      <button class="icon-btn" data-act="del" data-coll="meters" data-id="${m.id}" aria-label="Удалить">${X}</button></div>`;
   }).join('') || '<div class="empty">Счётчиков нет</div>'}
   <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn soft" data-act="addMeter">+ Счётчик</button></div></div>`;
+}
+
+// Раздел «Ещё»: всё, что не поместилось в нижнюю панель.
+function viewMore() {
+  return `<div class="card">${MORE_ITEMS.map(([id, ic, title, sub]) => `
+    <button class="more-row" data-act="sec" data-v="${id}">
+      <span class="more-ico">${svg(ic, 22)}</span>
+      <span class="main"><span class="t">${esc(title)}</span><span class="s">${esc(sub)}</span></span>
+      <span class="more-chev">${svg('right', 18)}</span>
+    </button>`).join('')}</div>`;
 }
 
 function viewPeople() {
@@ -311,23 +400,23 @@ function viewPeople() {
       <select id="me-select">${S.people.map((p) => `<option value="${p.id}" ${p.id === ME ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
     <div class="card"><div class="row" style="justify-content:space-between"><div class="setting-title">Имена</div>
       <button class="btn soft" data-act="addPerson">+ Человек</button></div>
-      <p class="setting-desc">Имя показывается в операциях, целях, документах и на главной.</p>
+      <p class="setting-desc">Имя показывается в операциях, целях и на главной.</p>
       ${S.people.map((p) => `<div class="li"><div class="main"><label class="field" for="pn_${p.id}">Имя</label>
         <input id="pn_${p.id}" type="text" value="${esc(p.name)}"></div>
-        <button class="icon-btn" data-act="del" data-coll="people" data-id="${p.id}" aria-label="Удалить">✕</button></div>`).join('')}
+        <button class="icon-btn" data-act="del" data-coll="people" data-id="${p.id}" aria-label="Удалить">${X}</button></div>`).join('')}
       <div class="pill-row"><button class="btn" data-act="saveNames">Сохранить имена</button></div></div>
     <div class="card"><div class="row" style="justify-content:space-between"><div class="setting-title">Счета</div>
       <button class="btn soft" data-act="addAcc">+ Счёт</button></div>
       ${S.accounts.map((a) => `<div class="li"><div class="main"><div class="t">${esc(a.name)}</div>
         <div class="s">${a.owner === 'shared' ? 'общий' : esc(personName(a.owner))}</div></div>
-        <button class="icon-btn" data-act="del" data-coll="accounts" data-id="${a.id}" aria-label="Удалить">✕</button></div>`).join('')}</div>
+        <button class="icon-btn" data-act="del" data-coll="accounts" data-id="${a.id}" aria-label="Удалить">${X}</button></div>`).join('')}</div>
     <div class="card"><div class="setting-title">Категории</div><p class="setting-desc">Через запятую</p>
-      <label class="field">Расходы</label><textarea id="cat-exp" rows="2">${esc(S.categories.expense.join(', '))}</textarea>
-      <label class="field">Доходы</label><textarea id="cat-inc" rows="2">${esc(S.categories.income.join(', '))}</textarea>
+      <label class="field" for="cat-exp">Расходы</label><textarea id="cat-exp" rows="2">${esc(S.categories.expense.join(', '))}</textarea>
+      <label class="field" for="cat-inc">Доходы</label><textarea id="cat-inc" rows="2">${esc(S.categories.income.join(', '))}</textarea>
       <button class="btn soft" data-act="saveCats">Сохранить категории</button></div>
-    <div class="card"><div class="setting-title">Уведомления</div>
-      <p class="setting-desc">За сколько дней предупреждать о событии.</p>
-      <label class="field">Дней заранее</label><input id="notify-days" type="number" min="0" max="30" value="${S.settings.notifyDaysAhead}">
+    <div class="card"><div class="setting-title">Напоминания</div>
+      <p class="setting-desc">За сколько дней показывать события в колокольчике.</p>
+      <label class="field" for="notify-days">Дней заранее</label><input id="notify-days" type="number" min="0" max="30" value="${S.settings.notifyDaysAhead}">
       <div class="pill-row"><button class="btn soft" data-act="saveSettings">Сохранить</button></div></div>
     <div class="card"><div class="setting-title">Данные</div>
       <p class="setting-desc">Экспорт сохраняет всё в файл. Не кладите этот файл в публичный репозиторий: в нём финансы.</p>
@@ -336,19 +425,55 @@ function viewPeople() {
       <button class="btn danger" data-act="resetData">Сбросить всё</button></div></div>`;
 }
 
-const TITLE = { ...Object.fromEntries(SECTIONS.map(([id, , l]) => [id, l])), settings: 'Настройки' };
+const TITLE = { ...Object.fromEntries(SECTIONS), settings: 'Настройки', more: 'Ещё' };
 
-const VIEWS = { dash: viewDash, fin: viewFin, goals: viewGoals, rem: viewRem, menu: menuHtml, car: viewCar, house: viewHouse, settings: viewPeople };
+const VIEWS = { dash: viewDash, fin: viewFin, goals: viewGoals, rem: viewRem, menu: menuHtml, car: viewCar, house: viewHouse, more: viewMore, settings: viewPeople };
+
+// ---------- колокольчик: напоминания, прочтение и платежи к подтверждению ----------
+// Прочтение хранится по каждому участнику: S.reads[ключ] = [id людей, которые открыли].
+const remKey = (it) => `${it.kind}|${it.title}|${it.date}`;
+const isReadBy = (it, pid) => ((S.reads || {})[remKey(it)] || []).includes(pid);
+const reminders = () => upcoming(S, todayIso(), S.settings.notifyDaysAhead);
+const unreadCount = () => reminders().filter((it) => !isReadBy(it, ME)).length;
+const bellTotal = () => unreadCount() + pendingPayments().length;
+
+function openBell() {
+  const items = reminders();
+  const unreadNow = new Set(items.filter((it) => !isReadBy(it, ME)).map(remKey));
+  S.reads = S.reads || {};
+  for (const it of items) {
+    const k = remKey(it);
+    const arr = S.reads[k] || [];
+    if (ME && !arr.includes(ME)) S.reads[k] = [...arr, ME];
+  }
+  save();
+  const list = items.length
+    ? items.map((it) => `<div class="li ${unreadNow.has(remKey(it)) ? 'unread' : ''}">
+        <span class="dot ${it.kind}"></span>
+        <div class="main"><div class="t">${esc(it.title)}${unreadNow.has(remKey(it)) ? '<span class="new-pill">новое</span>' : ''}</div>
+        <div class="s">${fmtDate(it.date)}${it.personId ? ' · ' + esc(personName(it.personId)) : ''}${it.overdue ? ' · просрочено' : ''}</div></div>
+        ${it.amount ? `<div class="amt">${money(it.amount)}</div>` : ''}</div>`).join('')
+    : '<div class="empty">Ближайших напоминаний нет</div>';
+  $('#modal-title').textContent = `Напоминания · ${personName(ME) || 'Гость'}`;
+  $('#modal-body').innerHTML = `${pendingHtml()}<p class="note" style="margin:0 8px">За ${S.settings.notifyDaysAhead} дн. вперёд. Открытие списка отмечает всё как прочитанное для вас.</p>${list}`;
+  $('#modal').classList.remove('hidden');
+}
+
+function refreshBellIfOpen() {
+  if (!$('#modal').classList.contains('hidden') && $('#modal-title').textContent.startsWith('Напоминания')) openBell();
+}
 
 // ---------- отрисовка ----------
 function render() {
   if (!S) return;
   $('#hero-title').textContent = TITLE[SEC];
   $('#hero-sub').textContent = `${fmtDate(todayIso())} · ${personName(ME) || 'Гость'}`;
-  $('#sections').innerHTML = SECTIONS.map(([id, ico, l]) =>
-    `<button class="${id === SEC ? 'active' : ''}" data-act="sec" data-v="${id}"><span class="ico">${ico}</span>${l}</button>`).join('');
+  $('#sections').innerHTML = NAV.map(([id, ic, label]) => {
+    const active = id === 'more' ? MORE_SECTIONS.includes(SEC) : SEC === id;
+    return `<button class="${active ? 'active' : ''}" data-act="sec" data-v="${id}" aria-label="${label}"${active ? ' aria-current="page"' : ''}>${svg(ic, 24)}<span>${label}</span></button>`;
+  }).join('');
   $('#main').innerHTML = VIEWS[SEC]();
-  const n = unreadCount();
+  const n = bellTotal();
   const bc = $('#bell-count');
   bc.textContent = n > 9 ? '9+' : String(n);
   bc.hidden = n === 0;
@@ -421,7 +546,7 @@ const ADD = {
     return null;
   }),
   addGoal: () => openForm('Новая цель', [
-    { k: 'kind', t: 'select', l: 'Тип', opts: [['long', 'Долгосрочная'], ['short', 'Краткосрочная']], v: GOAL_KIND },
+    { k: 'kind', t: 'select', l: 'Тип', opts: [['long', 'Долгосрочная'], ['short', 'Краткосрочная']], v: GOAL_KIND === 'short' ? 'short' : 'long' },
     { k: 'title', t: 'text', l: 'Название' },
     { k: 'target', t: 'number', l: 'Нужная сумма' },
     { k: 'saved', t: 'number', l: 'Уже отложено', v: 0 },
@@ -511,6 +636,8 @@ const ACTIONS = {
     S[d.coll] = S[d.coll].filter((x) => x.id !== d.id);
   },
   toggleRec: (d) => { const r = S.recurring.find((x) => x.id === d.id); r.active = !r.active; },
+  payOk: (d) => { resolvePayment(d.id, d.ym, 'ok'); refreshBellIfOpen(); },
+  paySkip: (d) => { resolvePayment(d.id, d.ym, 'skip'); refreshBellIfOpen(); },
   wishBought: (d) => { const w = S.wishes.find((x) => x.id === d.id); w.bought = !w.bought; },
   taskDone: (d) => { const t = S.homeTasks.find((x) => x.id === d.id); t.lastDone = todayIso(); },
   topUp: (d) => {
@@ -527,6 +654,8 @@ const ACTIONS = {
     openForm('Платёж: ' + debt.title, [{ k: 'amt', t: 'number', l: 'Сумма платежа', v: debt.monthly }], (o) => {
       if (!o.amt || o.amt <= 0) return 'Введите сумму';
       debt.remaining = Math.max(0, debt.remaining - o.amt);
+      S.transactions.push({ id: uid(), type: 'expense', amount: o.amt, date: todayIso(), category: 'Прочее',
+        account: '', personId: '', private: false, note: `Платёж по долгу: ${debt.title}` });
       return null;
     });
     return false;
@@ -610,39 +739,6 @@ document.addEventListener('click', (e) => {
   if (changed !== false) { save(); render(); }
 });
 
-
-// ---------- колокольчик: напоминания и прочтение ----------
-// Прочтение хранится по каждому участнику: S.reads[ключ] = [id людей, которые открыли].
-// Открыл свой колокольчик — у тебя прочитано, у партнёра остаётся непрочитанным,
-// пока он сам не откроет список. Данные лежат в браузере, поэтому прочтение
-// видно на том устройстве, где оно сделано (как и остальные данные).
-const remKey = (it) => `${it.kind}|${it.title}|${it.date}`;
-const isReadBy = (it, pid) => ((S.reads || {})[remKey(it)] || []).includes(pid);
-const reminders = () => upcoming(S, todayIso(), S.settings.notifyDaysAhead);
-const unreadCount = () => reminders().filter((it) => !isReadBy(it, ME)).length;
-
-function openBell() {
-  const items = reminders();
-  const unreadNow = new Set(items.filter((it) => !isReadBy(it, ME)).map(remKey));
-  S.reads = S.reads || {};
-  for (const it of items) {
-    const k = remKey(it);
-    const arr = S.reads[k] || [];
-    if (ME && !arr.includes(ME)) S.reads[k] = [...arr, ME];
-  }
-  save();
-  const list = items.length
-    ? items.map((it) => `<div class="li ${unreadNow.has(remKey(it)) ? 'unread' : ''}">
-        <span class="dot ${it.kind}"></span>
-        <div class="main"><div class="t">${esc(it.title)}${unreadNow.has(remKey(it)) ? '<span class="new-pill">новое</span>' : ''}</div>
-        <div class="s">${fmtDate(it.date)}${it.personId ? ' · ' + esc(personName(it.personId)) : ''}${it.overdue ? ' · просрочено' : ''}</div></div>
-        ${it.amount ? `<div class="amt">${money(it.amount)}</div>` : ''}</div>`).join('')
-    : '<div class="empty">Ближайших напоминаний нет</div>';
-  $('#modal-title').textContent = `Напоминания · ${personName(ME) || 'Гость'}`;
-  $('#modal-body').innerHTML = `<p class="note" style="margin:0 0 8px">За ${S.settings.notifyDaysAhead} дн. вперёд. Открытие списка отмечает всё как прочитанное для вас.</p>${list}`;
-  $('#modal').classList.remove('hidden');
-}
-
 // ---------- запуск ----------
 async function loadBase() {
   return (await fetch('data.json', { cache: 'no-store' })).json();
@@ -662,6 +758,8 @@ async function init() {
   } catch (err) {
     $('#main').innerHTML = `<div class="card">Не удалось загрузить data.json. Откройте приложение по ссылке GitHub Pages или через локальный сервер.<br><span class="muted">${esc(err.message)}</span></div>`;
   }
+  // Офлайн-режим и установка на экран телефона.
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
 init();
