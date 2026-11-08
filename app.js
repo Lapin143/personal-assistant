@@ -336,7 +336,11 @@ function render() {
   $('#hero-sub').textContent = `${fmtDate(todayIso())} · ${personName(ME) || 'Гость'}`;
   $('#sections').innerHTML = SECTIONS.map(([id, l]) =>
     `<button class="${id === SEC ? 'active' : ''}" data-act="sec" data-v="${id}">${l}</button>`).join('');
-  $('#main').innerHTML = remindHtml() + VIEWS[SEC]();
+  $('#main').innerHTML = VIEWS[SEC]();
+  const n = unreadCount();
+  const bc = $('#bell-count');
+  bc.textContent = n > 9 ? '9+' : String(n);
+  bc.hidden = n === 0;
   if (SEC === 'menu') menuBind();
   bindChange();
 }
@@ -564,7 +568,7 @@ const ACTIONS = {
     S.settings.notifyDaysAhead = isNaN(n) ? 3 : Math.min(30, Math.max(0, n));
     toast('Сохранено');
   },
-  ackRem: () => { write('as.ackDay', todayIso()); },
+  bell: () => { openBell(); },
   exportData: () => {
     const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -595,19 +599,37 @@ document.addEventListener('click', (e) => {
   if (changed !== false) { save(); render(); }
 });
 
-// ---------- напоминания внутри приложения ----------
-// Показываются вверху любого раздела, пока есть события в пределах «Дней заранее».
-// Скрываются до конца дня кнопкой ✕.
-function remindHtml() {
-  const t = todayIso();
-  if (read('as.ackDay', '') === t) return '';
-  const items = upcoming(S, t, S.settings.notifyDaysAhead);
-  if (!items.length) return '';
-  return `<div class="card remind">
-    <div class="row" style="justify-content:space-between">
-      <div class="setting-title" style="margin:0">Скоро</div>
-      <button class="icon-btn" data-act="ackRem" aria-label="Скрыть до завтра">✕</button></div>
-    ${items.slice(0, 8).map(liUp).join('')}</div>`;
+
+// ---------- колокольчик: напоминания и прочтение ----------
+// Прочтение хранится по каждому участнику: S.reads[ключ] = [id людей, которые открыли].
+// Открыл свой колокольчик — у тебя прочитано, у партнёра остаётся непрочитанным,
+// пока он сам не откроет список. Данные лежат в браузере, поэтому прочтение
+// видно на том устройстве, где оно сделано (как и остальные данные).
+const remKey = (it) => `${it.kind}|${it.title}|${it.date}`;
+const isReadBy = (it, pid) => ((S.reads || {})[remKey(it)] || []).includes(pid);
+const reminders = () => upcoming(S, todayIso(), S.settings.notifyDaysAhead);
+const unreadCount = () => reminders().filter((it) => !isReadBy(it, ME)).length;
+
+function openBell() {
+  const items = reminders();
+  const unreadNow = new Set(items.filter((it) => !isReadBy(it, ME)).map(remKey));
+  S.reads = S.reads || {};
+  for (const it of items) {
+    const k = remKey(it);
+    const arr = S.reads[k] || [];
+    if (ME && !arr.includes(ME)) S.reads[k] = [...arr, ME];
+  }
+  save();
+  const list = items.length
+    ? items.map((it) => `<div class="li ${unreadNow.has(remKey(it)) ? 'unread' : ''}">
+        <span class="dot ${it.kind}"></span>
+        <div class="main"><div class="t">${esc(it.title)}${unreadNow.has(remKey(it)) ? '<span class="new-pill">новое</span>' : ''}</div>
+        <div class="s">${fmtDate(it.date)}${it.personId ? ' · ' + esc(personName(it.personId)) : ''}${it.overdue ? ' · просрочено' : ''}</div></div>
+        ${it.amount ? `<div class="amt">${money(it.amount)}</div>` : ''}</div>`).join('')
+    : '<div class="empty">Ближайших напоминаний нет</div>';
+  $('#modal-title').textContent = `Напоминания · ${personName(ME) || 'Гость'}`;
+  $('#modal-body').innerHTML = `<p class="note" style="margin:0 0 8px">За ${S.settings.notifyDaysAhead} дн. вперёд. Открытие списка отмечает всё как прочитанное для вас.</p>${list}`;
+  $('#modal').classList.remove('hidden');
 }
 
 // ---------- запуск ----------

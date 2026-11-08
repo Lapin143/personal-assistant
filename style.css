@@ -288,3 +288,8 @@ details.recipe b { color: #3b4742; }
 .note { font-size: 12px; color: var(--muted); }
 .warn-box { background: #fdf3e6; color: #7a4d10; border-radius: 14px; padding: 12px 14px; font-size: 13px; margin-bottom: 12px; }
 
+.bell { position: relative; cursor: pointer; font-size: 22px; border: 0; }
+.bell-count { position: absolute; top: -4px; right: -6px; background: #a13a2b; color: #fff; font-size: 11px; font-weight: 800; border-radius: 999px; padding: 1px 6px; min-width: 18px; text-align: center; }
+.bell-count[hidden] { display: none; }
+.li.unread { background: #f6faf8; border-radius: 12px; }
+.new-pill { font-size: 11px; background: var(--green); color: #fff; padding: 2px 7px; border-radius: 999px; margin-left: 6px; font-weight: 700; }
