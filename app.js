@@ -1,6 +1,7 @@
 import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b2';
 import { featuresInit, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, feedHtml, cushionHtml, extraReminders,
-  viewLists, viewIdeas, viewGifts, viewActivity, FEATURE_ADD, FEATURE_ACTIONS, logEvent } from './features.js?v=b2';
+  viewLists, viewIdeas, viewGifts, viewActivity, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
+  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS } from './features.js?v=b4';
 import { pullRemote, queuePush, authEnabled, signIn, signOutLocal, validToken, getSession } from './sync.js?v=b3';
 import { iso, todayIso, addDays, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js';
 
@@ -184,9 +185,10 @@ function resolvePayment(rid, ym, status) {
 }
 
 function pendingHtml() {
+  const inc = pendingIncomeHtml();
   const list = pendingPayments();
-  if (!list.length) return '';
-  return `<div class="card pending">
+  if (!list.length) return inc;
+  return inc + `<div class="card pending">
     <div class="setting-title">К подтверждению</div>
     <p class="setting-desc">Проведите платёж, когда он действительно прошёл. Пропущенный в учёт не попадёт.</p>
     ${list.map(({ r, ym, date }) => `<div class="li">
@@ -329,16 +331,7 @@ function wishHtml() {
 }
 
 function viewRem() {
-  const up = upcoming(S, todayIso(), 60);
-  return `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn" data-act="addRem">+ Напоминание</button></div>
-    <div class="card"><div class="setting-title">Ближайшие 60 дней</div>
-      ${up.length ? up.map(liUp).join('') : '<div class="empty">Событий нет</div>'}</div>
-    <div class="card"><div class="setting-title">Свои напоминания</div>
-      ${S.reminders.length ? S.reminders.map((r) => `<div class="li">
-        <div class="main"><div class="t">${esc(r.title)}</div>
-        <div class="s">${fmtDate(r.date)} · ${REPEAT[r.repeat] || ''}${r.personId ? ' · ' + esc(personName(r.personId)) : ''}</div></div>
-        <button class="icon-btn" data-act="del" data-coll="reminders" data-id="${r.id}" aria-label="Удалить">${X}</button></div>`).join('')
-        : '<div class="empty">Своих напоминаний нет</div>'}</div>`;
+  return remView();
 }
 
 function carCard(c) {
@@ -465,7 +458,7 @@ const isReadBy = (it, pid) => ((S.reads || {})[remKey(it)] || []).includes(pid);
 const reminders = () => [...upcoming(S, todayIso(), S.settings.notifyDaysAhead), ...extraReminders(todayIso(), S.settings.notifyDaysAhead)]
   .sort((a, b) => (a.date < b.date ? -1 : 1));
 const unreadCount = () => reminders().filter((it) => !isReadBy(it, ME)).length;
-const bellTotal = () => unreadCount() + pendingPayments().length;
+const bellTotal = () => unreadCount() + pendingPayments().length + pendingIncomes().length;
 
 function openBell() {
   const items = reminders();
@@ -538,6 +531,7 @@ function bindChange() {
 // ---------- действия (клики) ----------
 const ADD = {
   ...FEATURE_ADD,
+  ...EXTRA_ADD,
   addOp: () => openForm('Новая операция', [
     { k: 'type', t: 'select', l: 'Тип', opts: [['expense', 'Расход'], ['income', 'Доход']], v: 'expense' },
     { k: 'amount', t: 'number', l: 'Сумма', ph: '0' },
@@ -661,6 +655,7 @@ const ADD = {
 
 const ACTIONS = {
   ...FEATURE_ACTIONS,
+  ...EXTRA_ACTIONS,
   logout: () => { signOutLocal(); localStorage.removeItem('as.data'); location.reload(); return false; },
   sec: (d) => { SEC = d.v; },
   finMonth: (d) => { FIN_MONTH = shiftMonth(FIN_MONTH, Number(d.d)); },

@@ -47,6 +47,8 @@ export function ensureData(s) {
   s.log ||= [];
   s.cushion ||= { months: 3, saved: 0 };
   s.confirmed ||= {};
+  s.incomes ||= [];
+  s.incomeConfirmed ||= {};
 }
 
 // ---------- категории из текста (голос, чеки) ----------
@@ -170,10 +172,11 @@ export function cushionHtml() {
 }
 
 // ---------- Финансы: бюджет, год, отчёт ----------
-export const FIN_TABS = [['budget', 'Бюджет'], ['year', 'Год'], ['report', 'Отчёт']];
+export const FIN_TABS = [['incomes', 'Поступления'], ['budget', 'Бюджет'], ['year', 'Год'], ['report', 'Отчёт']];
 export const isFinExtraTab = (tab) => FIN_TABS.some(([v]) => v === tab);
 
 export function finTabHtml(tab, month) {
+  if (tab === 'incomes') return incomeTabHtml(month);
   if (tab === 'budget') return budgetHtml(month);
   if (tab === 'year') return yearHtml(month);
   return reportHtml(month);
@@ -567,3 +570,172 @@ export const FEATURE_ACTIONS = {
   printReport: () => { window.print(); return false; }
 };
 
+
+// ---------- календарь напоминаний ----------
+let REM_MONTH = null;
+let REM_DAY = null;
+const KIND_TITLE = { rem: 'Напоминание', pay: 'Платёж', gift: 'Подарок', income: 'Поступление' };
+const CAL_DOW = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+
+function ensureCalState() {
+  if (!REM_DAY) { REM_DAY = today(); REM_MONTH = today().slice(0, 7); }
+}
+
+// Все события месяца: собственные напоминания (с повтором), платежи, подарки, поступления.
+function eventsOfMonth(ym) {
+  const s = S();
+  const out = [];
+  const [y, m] = ym.split('-').map(Number);
+  const dim = lastDay(y, m);
+  const at = (d) => `${ym}-${String(Math.min(d, dim)).padStart(2, '0')}`;
+  const add = (date, kind, title, amount, extra = {}) => out.push({ date, kind, title, amount, ...extra });
+  for (const r of s.reminders) {
+    const rd = Number(r.date.slice(8, 10));
+    const rm = Number(r.date.slice(5, 7));
+    const extra = { id: r.id, coll: 'reminders', personId: r.personId };
+    if (r.repeat === 'none') {
+      if (r.date.startsWith(ym)) add(r.date, 'rem', r.title, 0, extra);
+    } else if (r.date.slice(0, 7) <= ym) {
+      if (r.repeat === 'month' || (r.repeat === 'year' && rm === m)) add(at(rd), 'rem', r.title, 0, extra);
+    }
+  }
+  for (const x of s.recurring) if (x.active) add(at(x.day), 'pay', x.title, x.amount, { personId: x.personId });
+  for (const x of s.yearly) if (x.month === m) add(at(x.day), 'pay', x.title, x.amount, { personId: x.personId });
+  for (const d of s.debts) if (d.remaining > 0) add(at(d.dueDay || 10), 'pay', `Долг: ${d.title}`, d.monthly);
+  for (const g of s.gifts) if (!g.done && g.date.startsWith(ym)) add(g.date, 'gift', g.title, g.budget || 0, { personId: g.personId });
+  for (const i of s.incomes) if (i.active) add(at(i.day), 'income', i.title, i.amount, { id: i.id, coll: 'incomes', personId: i.personId });
+  return out;
+}
+
+export function remView() {
+  ensureCalState();
+  const [y, m] = REM_MONTH.split('-').map(Number);
+  const dim = lastDay(y, m);
+  const lead = (new Date(y, m - 1, 1).getDay() + 6) % 7;
+  const byDay = {};
+  for (const e of eventsOfMonth(REM_MONTH)) (byDay[e.date] = byDay[e.date] || []).push(e);
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push('<span class="cal-cell cal-empty" aria-hidden="true"></span>');
+  for (let d = 1; d <= dim; d++) {
+    const date = `${REM_MONTH}-${String(d).padStart(2, '0')}`;
+    const list = byDay[date] || [];
+    const kinds = [...new Set(list.map((e) => e.kind))];
+    cells.push(`<button class="cal-cell ${date === today() ? 'is-today' : ''} ${date === REM_DAY ? 'is-sel' : ''}" data-act="remPick" data-day="${date}"
+      aria-label="${fmtDate(date)}, событий: ${list.length}"><span class="cal-num">${d}</span>
+      <span class="cal-dots">${kinds.slice(0, 4).map((k) => `<i class="cal-dot cal-${k}"></i>`).join('')}</span></button>`);
+  }
+  const dayList = byDay[REM_DAY] || [];
+  const legend = Object.entries(KIND_TITLE).map(([k, t]) => `<span class="cal-leg"><i class="cal-dot cal-${k}"></i>${t}</span>`).join('');
+  return `<div class="pl-week-nav">
+      <button class="icon-btn" data-act="remNav" data-d="-1" aria-label="Предыдущий месяц">‹</button>
+      <div class="pl-week-title"><strong style="text-transform:capitalize">${monthTitle(REM_MONTH)}</strong></div>
+      <button class="icon-btn" data-act="remNav" data-d="1" aria-label="Следующий месяц">›</button></div>
+    <div class="cal-legend">${legend}</div>
+    <div class="cal-grid cal-head">${CAL_DOW.map((d) => `<span>${d}</span>`).join('')}</div>
+    <div class="cal-grid">${cells.join('')}</div>
+    <div class="card" style="margin-top:12px">
+      <div class="row" style="justify-content:space-between"><div class="setting-title" style="margin:0">${fmtDate(REM_DAY)}</div>
+        <button class="btn" data-act="remNew">+ Событие</button></div>
+      ${dayList.length ? dayList.map((e) => `<div class="li"><i class="cal-dot cal-${e.kind}"></i>
+        <div class="main"><div class="t">${esc(e.title)}</div>
+        <div class="s">${KIND_TITLE[e.kind]}${e.personId ? ' · ' + esc(personName(e.personId)) : ''}</div></div>
+        ${e.amount ? `<div class="amt">${money(e.amount)}</div>` : ''}
+        ${e.coll ? `<button class="icon-btn" data-act="del" data-coll="${e.coll}" data-id="${e.id}" aria-label="Удалить">${X()}</button>` : ''}</div>`).join('')
+        : '<div class="empty">Событий в этот день нет</div>'}
+    </div>`;
+}
+
+// ---------- регулярные поступления (зарплата и т.п.) ----------
+export function incomeTabHtml(month) {
+  const s = S();
+  const list = s.incomes.slice().sort((a, b) => a.day - b.day);
+  const plan = list.filter((i) => i.active).reduce((a, i) => a + (Number(i.amount) || 0), 0);
+  const got = sumInc(visible().filter((o) => o.date.startsWith(month)));
+  return `<div class="card"><div class="row" style="justify-content:space-between">
+      <div class="setting-title" style="margin:0">Регулярные поступления</div>
+      <button class="btn" data-act="addIncome">+ Поступление</button></div>
+    <p class="setting-desc">В день прихода появится запрос на подтверждение. Сумму можно поправить: зарплата иногда меняется.</p>
+    ${list.length ? list.map((i) => `<div class="li">
+      <div class="main"><div class="t">${esc(i.title)}${i.active ? '' : ' · на паузе'}</div>
+      <div class="s">${i.day}-го числа${i.personId ? ' · ' + esc(personName(i.personId)) : ''}</div></div>
+      <div class="amt inc">+${money(i.amount)}</div>
+      <button class="icon-btn" data-act="incToggle" data-id="${i.id}" aria-label="${i.active ? 'Пауза' : 'Возобновить'}">${svg(i.active ? 'pause' : 'play', 18)}</button>
+      <button class="icon-btn" data-act="del" data-coll="incomes" data-id="${i.id}" aria-label="Удалить">${X()}</button></div>`).join('')
+      : '<div class="empty">Поступлений пока нет</div>'}
+    <p class="note">План в месяц: ${money(plan)} · пришло в этом месяце: ${money(got)}</p></div>`;
+}
+
+// Поступления, которые уже должны были прийти и не подтверждены.
+export function pendingIncomes(t = today()) {
+  const s = S();
+  const ym = t.slice(0, 7);
+  const [y, m] = ym.split('-').map(Number);
+  const dayNow = Number(t.slice(8));
+  return s.incomes
+    .filter((i) => i.active && i.day <= dayNow && !s.incomeConfirmed[`${i.id}|${ym}`])
+    .map((i) => ({ i, ym, date: `${ym}-${String(Math.min(i.day, lastDay(y, m))).padStart(2, '0')}` }));
+}
+
+export function pendingIncomeHtml() {
+  const list = pendingIncomes();
+  if (!list.length) return '';
+  return `<div class="card pending"><div class="setting-title">Поступления: подтвердите</div>
+    <p class="setting-desc">Проверьте сумму и подтвердите, когда деньги пришли. Если не пришли, отметьте «Не пришло».</p>
+    ${list.map(({ i, ym, date }) => `<div class="li">
+      <div class="main"><div class="t">${esc(i.title)}</div>
+      <div class="s">${fmtDate(date)} · ${esc(personName(i.personId) || 'Общее')}</div></div>
+      <div class="amt inc">+${money(i.amount)}</div>
+      <button class="btn soft" data-act="incConfirm" data-id="${i.id}" data-ym="${ym}">Подтвердить</button>
+      <button class="icon-btn" data-act="incSkip" data-id="${i.id}" data-ym="${ym}" aria-label="Не пришло">${X()}</button></div>`).join('')}</div>`;
+}
+
+export const EXTRA_ADD = {
+  remNew: () => simpleForm('Событие', [
+    { k: 'title', t: 'text', l: 'Что напомнить' },
+    { k: 'date', t: 'date', l: 'Дата', v: REM_DAY || today() },
+    { k: 'repeat', t: 'select', l: 'Повтор', opts: [['none', 'однократно'], ['month', 'каждый месяц'], ['year', 'каждый год']], v: 'none' },
+    { k: 'personId', t: 'select', l: 'Для кого', opts: [['', 'Общее'], ...personOptsReal()], v: '' }
+  ], (o) => {
+    if (!o.title || !o.date) return 'Введите название и дату';
+    S().reminders.push({ id: uid(), title: o.title, date: o.date, repeat: o.repeat, personId: o.personId });
+    REM_DAY = o.date;
+    REM_MONTH = o.date.slice(0, 7);
+    return null;
+  }),
+  addIncome: () => simpleForm('Регулярное поступление', [
+    { k: 'title', t: 'text', l: 'Название', ph: 'Зарплата' },
+    { k: 'amount', t: 'number', l: 'Сумма' },
+    { k: 'day', t: 'number', l: 'День месяца (1–31)', v: 10 },
+    { k: 'category', t: 'select', l: 'Категория', opts: S().categories.income.map((c) => [c, c]), v: 'Зарплата' },
+    { k: 'account', t: 'select', l: 'Счёт', opts: S().accounts.map((a) => [a.id, a.name]), v: (S().accounts[0] || {}).id || '' },
+    { k: 'personId', t: 'select', l: 'Чьё', opts: personOptsReal(), v: me() }
+  ], (o) => {
+    if (!o.title || o.amount === '' || o.amount <= 0) return 'Заполните название и сумму';
+    S().incomes.push({ id: uid(), title: o.title, amount: o.amount, day: Math.min(31, Math.max(1, Number(o.day) || 1)),
+      category: o.category, account: o.account, personId: o.personId, active: true });
+    return null;
+  })
+};
+
+export const EXTRA_ACTIONS = {
+  remNav: (d) => { ensureCalState(); REM_MONTH = shiftYm(REM_MONTH, Number(d.d)); },
+  remPick: (d) => { REM_DAY = d.day; REM_MONTH = d.day.slice(0, 7); },
+  incToggle: (d) => { const i = S().incomes.find((x) => x.id === d.id); i.active = !i.active; },
+  incConfirm: (d) => {
+    const i = S().incomes.find((x) => x.id === d.id);
+    F.openForm(`Поступление: ${i.title}`, [
+      { k: 'amt', t: 'number', l: 'Сумма, которая пришла', v: i.amount },
+      { k: 'date', t: 'date', l: 'Дата прихода', v: today() }
+    ], (o) => {
+      if (!o.amt || o.amt <= 0) return 'Введите сумму';
+      S().transactions.push({ id: uid(), type: 'income', amount: o.amt, date: o.date || today(), category: i.category || 'Зарплата',
+        account: i.account || (S().accounts[0] || {}).id || '', personId: i.personId || '', private: false,
+        note: i.title, fromIncome: i.id });
+      S().incomeConfirmed[`${i.id}|${d.ym}`] = { status: 'ok', at: today(), amount: o.amt };
+      logEvent(`Поступление ${money(o.amt)} · ${i.title}`);
+      return null;
+    });
+    return false;
+  },
+  incSkip: (d) => { S().incomeConfirmed[`${d.id}|${d.ym}`] = { status: 'skip', at: today() }; }
+};

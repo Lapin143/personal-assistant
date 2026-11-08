@@ -18,3 +18,20 @@
   body{background:#fff;color:#000}
   .card{box-shadow:none;border:0;break-inside:avoid}
 }
+
+/* Календарь напоминаний */
+.cal-legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--sub);margin-bottom:8px}
+.cal-leg{display:inline-flex;align-items:center;gap:5px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-head span{text-align:center;font-size:12px;color:var(--sub);font-weight:600;padding:4px 0}
+.cal-cell{min-height:52px;border:1px solid var(--row-line);background:var(--surface);border-radius:10px;padding:4px 2px;font:inherit;font-size:14px;color:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:space-between}
+.cal-cell.cal-empty{border:0;background:none;cursor:default}
+.cal-cell.is-today{border-color:#2f5d50;font-weight:800}
+.cal-cell.is-sel{background:#2f5d50;color:#fff;border-color:#2f5d50}
+.cal-dots{display:flex;gap:3px;flex-wrap:wrap;justify-content:center;min-height:8px}
+.cal-dot{display:inline-block;width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+.cal-rem{background:#3b6ea5}
+.cal-pay{background:#b5533c}
+.cal-gift{background:#8a5fa8}
+.cal-income{background:#2e8b57}
+.cal-cell:focus-visible{outline:3px solid #9cc7b8;outline-offset:2px}
