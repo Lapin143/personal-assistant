@@ -1,3 +1,4 @@
+import { menuHtml, menuBind, menuInit } from './menu/menu.js';
 import { iso, todayIso, addDays, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js';
 
 // ---------- помощники ----------
@@ -338,13 +339,7 @@ function viewPeople() {
       <button class="btn danger" data-act="resetData">Сбросить всё</button></div></div>`;
 }
 
-// Меню на 30 дней — полный приложение из папки menu/ (блюда, замены, покупки, чеки),
-// встроено на весь экран раздела. Его данные хранятся отдельно (ключи menu.*).
-function viewMenu() {
-  return `<iframe class="menu-frame" src="menu/index.html" title="Меню на 30 дней" loading="lazy"></iframe>`;
-}
-
-const VIEWS = { dash: viewDash, fin: viewFin, goals: viewGoals, wish: viewWish, rem: viewRem, menu: viewMenu, car: viewCar, house: viewHouse, docs: viewDocs, people: viewPeople };
+const VIEWS = { dash: viewDash, fin: viewFin, goals: viewGoals, wish: viewWish, rem: viewRem, menu: menuHtml, car: viewCar, house: viewHouse, docs: viewDocs, people: viewPeople };
 
 // ---------- отрисовка ----------
 function render() {
@@ -354,6 +349,7 @@ function render() {
   $('#sections').innerHTML = SECTIONS.map(([id, l]) =>
     `<button class="${id === SEC ? 'active' : ''}" data-act="sec" data-v="${id}">${l}</button>`).join('');
   $('#main').innerHTML = remindHtml() + VIEWS[SEC]();
+  if (SEC === 'menu') menuBind();
   bindChange();
 }
 
@@ -649,6 +645,7 @@ async function init() {
     S.settings = { ...base.settings, ...(S.settings || {}) };
     ME = read('as.me', null);
     if (!S.people.some((p) => p.id === ME)) ME = S.people[0] ? S.people[0].id : null;
+    await menuInit(() => render());
     render();
   } catch (err) {
     $('#main').innerHTML = `<div class="card">Не удалось загрузить data.json. Откройте приложение по ссылке GitHub Pages или через локальный сервер.<br><span class="muted">${esc(err.message)}</span></div>`;

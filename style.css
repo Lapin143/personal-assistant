@@ -288,5 +288,3 @@ details.recipe b { color: #3b4742; }
 .note { font-size: 12px; color: var(--muted); }
 .warn-box { background: #fdf3e6; color: #7a4d10; border-radius: 14px; padding: 12px 14px; font-size: 13px; margin-bottom: 12px; }
 
-/* Меню внутри раздела «Меню» */
-.menu-frame { width: 100%; height: calc(100vh - 230px); min-height: 560px; border: 0; border-radius: 18px; background: #fff; }

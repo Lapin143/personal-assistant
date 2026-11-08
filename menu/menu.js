@@ -1,6 +1,8 @@
-// Наше меню: статическое приложение без сборки.
-// Блюда и план лежат в data.json. Правки в браузере сохраняются в localStorage,
-// а кнопка «Экспорт» в настройках выгружает data.json для репозитория.
+// Меню на 30 дней, встроено в «Ассистент».
+// Блюда и план — menu/data.json. Правки хранятся в localStorage под ключами menu.*.
+// Экспорт в настройках меню выгружает data.json для замены файла в репозитории.
+
+import { META } from './meta.js';
 
 const KEY = {
   start: 'menu.start',
@@ -23,52 +25,15 @@ const TYPE = {
   dinner: { title: 'Ужины', chip: 'Ужин' }
 };
 const DEFAULT_EMOJI = { breakfast: '🍳', lunch: '🍽', soup: '🥣', dinner: '🍛' };
+const TABS = [['today', 'Сегодня'], ['dishes', 'Блюда'], ['shopping', 'Покупки'], ['settings', 'Ещё']];
 
-// Описания и эмодзи для блюд из data.json (по названию).
-const META = {
-  'Овсянка с бананом и орехами': { e: '🥣', d: 'Тёплая овсянка на молоке, мягкий банан и хрустящие орехи. Надолго сытно и отличное начало дня.' },
-  'Гречка на молоке с яблоком': { e: '🥛', d: 'Нежная гречневая каша на молоке с тёртым яблоком. По-домашнему сытно и с натуральной сладостью.' },
-  'Сырники с ягодами': { e: '🥞', d: 'Золотистые сырники из творога на минимуме муки, со свежими ягодами сверху. Нежные внутри, румяные снаружи.' },
-  'Яичница с овощами и хлебом': { e: '🍳', d: 'Яичница на мягко обжаренных помидорах и перце, с тающим сыром и ломтиком хлеба. Быстро и плотно.' },
-  'Йогурт с мюсли и фруктами': { e: '🍨', d: 'Холодный натуральный йогурт с хрустящими мюсли и фруктами. Готов за минуту, когда времени совсем нет.' },
-  'Творожная запеканка с фруктами': { e: '🍰', d: 'Воздушная запеканка из творога с фруктами, запечённая до золотистой корочки. Вкусна и тёплой, и холодной.' },
-  'Омлет с творогом': { e: '🥚', d: 'Пышный омлет с творогом внутри: мягкий, лёгкий и быстрый. Зелень делает его особенно свежим.' },
-  'Шакшука': { e: '🍅', d: 'Яйца, томлённые в ароматном томатном соусе с луком и перцем. Ярко, сытно и подаётся прямо со сковороды.' },
-  'Яйца пашот на тосте с сыром': { e: '🥚', d: 'Яйца пашот с нежным жидким желтком на поджаренном хлебе с сыром. Выглядит ресторанно и готовится быстро.' },
-  'Гранола с йогуртом и ягодами': { e: '🌾', d: 'Домашняя гранола из овсянки, орехов и мёда с йогуртом и ягодами. Хрустящая, ароматная и без лишнего сахара.' },
-
-  'Курица с рисом': { e: '🍗', d: 'Сочная курица с луком и морковью и рассыпчатый рис. Классический домашний обед, который нравится всем.' },
-  'Курица с гречкой': { e: '🍗', d: 'Курица с золотистым луком и гречка с хрустом. Простой и сытный обед, который держит энергию.' },
-  'Курица с картофелем': { e: '🍗', d: 'Курица, запечённая с картофелем и луком до румяной корочки. Всё в одной форме, почти без возни.' },
-  'Гуляш с картофелем': { e: '🥘', d: 'Нежная говядина, тушёная с луком, морковью и томатом, с картофелем. Густой и ароматный.' },
-  'Говядина тушёная с гречкой': { e: '🥩', d: 'Говядина, долго томлённая до мягкости, с рассыпчатой гречкой. Тёплый и сытный обед на каждый день.' },
-  'Говядина тушёная с рисом': { e: '🥩', d: 'Тушёная говядина в мягком соусе с овощами и рисом. Гарнир вбирает вкус мяса, очень уютно.' },
-  'Бефстроганов с макаронами': { e: '🍝', d: 'Говядина полосками в луковом соусе с соевым акцентом и макаронами. Быстрый и насыщенный обед.' },
-  'Форель с рисом': { e: '🐟', d: 'Запечённая форель с лимоном и рассыпчатым рисом. Лёгкий, но сытный обед с тонким вкусом рыбы.' },
-  'Белая рыба с гречкой': { e: '🐟', d: 'Нежное филе белой рыбы со специями и лимоном, с гречкой. Лёгкий обед, который не утяжеляет.' },
-  'Белая рыба с картофелем': { e: '🐟', d: 'Белая рыба, запечённая с картофелем и лимоном. Нежно, ароматно и без лишних хлопот.' },
-  'Рагу из свинины с овощами': { e: '🍖', d: 'Сочная свинина, томлённая с картофелем и овощами. Густое рагу, которое тает во рту.' },
-
-  'Куриный суп с лапшой': { e: '🍜', d: 'Прозрачный бульон из курицы с овощами и домашней лапшой. Классика, которая готовится сразу на два дня.' },
-  'Щи из говядины': { e: '🥣', d: 'Наваристые щи из говядины с капустой и томатом. Кислинка и густой бульон, отличный выбор на выходные.' },
-  'Гороховый суп с хлебом': { e: '🫕', d: 'Густой горох с картофелем и овощами, подаётся с ломтиком хлеба. Сытный, тёплый и любимый многими.' },
-  'Борщ с говядиной': { e: '🍲', d: 'Яркий борщ со свёклой, капустой и говядиной в насыщенном бульоне. Со сметаной и хлебом — идеально.' },
-
-  'Омлет с овощами и сыром': { e: '🍳', d: 'Пышный омлет с помидорами, перцем и сыром. Лёгкий ужин, который готовится за несколько минут.' },
-  'Макароны с томатным соусом и сыром': { e: '🍝', d: 'Макароны в ароматном томатном соусе с луком и тающим сыром. Простой и уютный ужин.' },
-  'Рис с яйцом и овощами': { e: '🍚', d: 'Жареный рис с овощами, соевым соусом и яйцом. Быстрое блюдо из вчерашнего риса, очень вкусное.' },
-  'Форель с картофелем': { e: '🐟', d: 'Запечённая форель с картофелем и лимоном. Нежная рыба и румяный картофель на одном противне.' },
-  'Белая рыба с овощами': { e: '🐟', d: 'Белая рыба, запечённая с овощной смесью и луком. Лёгкий ужин, полезный и красивый на тарелке.' },
-  'Курица карри с рисом': { e: '🍛', d: 'Курица в мягком карри с кокосовым молоком и томатами, с рисом. Тёплые специи и нежный соус.' },
-  'Курица запечённая с картофелем': { e: '🍗', d: 'Курица и картофель, запечённые со специями до хрустящей корочки. Ужин без стояния у плиты.' },
-  'Говядина тушёная с картофелем': { e: '🥘', d: 'Говядина, тушёная с луком, морковью и томатной пастой, с картофелем. Густо, ароматно и по-домашнему.' },
-  'Шакшука (ужин)': { e: '🍅', d: 'Яйца в томатном соусе с луком и перцем. Лёгкий вечерний вариант с ярким вкусом.' }
-};
-
-let D = {};        // startDate, dishes, plan, bulk, weekly
+let D = null;          // startDate, dishes, plan, bulk, weekly
+let loadError = '';
 let viewDay = 1;
 let dishFilter = 'all';
 let dishQuery = '';
+let TAB = 'today';
+let rerender = () => {};
 
 const $ = (sel) => document.querySelector(sel);
 const read = (k, def) => {
@@ -144,7 +109,7 @@ function revertMeal(n, slot) {
   write(KEY.overrides, ov);
 }
 
-// ---------- модальное окно ----------
+// ---------- модальное окно (общее с «Ассистентом») ----------
 function showModal(title, html) {
   $('#modal-title').textContent = title;
   $('#modal-body').innerHTML = html;
@@ -152,22 +117,21 @@ function showModal(title, html) {
 }
 function hideModal() { $('#modal').classList.add('hidden'); }
 
-// ---------- шапка ----------
-function renderHero() {
+// ---------- шапка раздела ----------
+function headHtml() {
   const t = todayDay();
   const max = D.plan.length;
   const shown = Math.min(Math.max(t, 1), max);
-  $('#hero-title').textContent = t < 1 ? 'Меню скоро начнётся' : t > max ? 'Меню на 30 дней завершено' : 'Наше меню';
-  $('#hero-sub').textContent = t >= 1 && t <= max
+  const sub = t >= 1 && t <= max
     ? `День ${t} из ${max} · ${fmtDate(dateOfDay(t))}`
-    : `Первый день плана: ${fmtDate(parseDate(D.startDate))}`;
-  $('#hero-progress').style.width = `${Math.round((shown / max) * 100)}%`;
-  $('#hero-badge').textContent = t >= 1 && t <= max && isWeekend(t) ? '🥣' : '🍽';
+    : t < 1 ? `Первый день плана: ${fmtDate(parseDate(D.startDate))}` : 'План на 30 дней завершён';
+  return `<div class="card">
+    <div class="muted">${esc(sub)}</div>
+    <div class="bar"><div style="width:${Math.round((shown / max) * 100)}%"></div></div></div>`;
 }
 
 // ---------- вкладка «Сегодня» ----------
-function renderToday() {
-  const el = $('#tab-today');
+function todayHtml() {
   const t = todayDay();
   const max = D.plan.length;
   const n = viewDay;
@@ -216,16 +180,7 @@ function renderToday() {
         </details>` : ''}
       </article>`;
   }
-  el.innerHTML = html;
-
-  $('#prev').onclick = () => { viewDay--; renderToday(); };
-  $('#next').onclick = () => { viewDay++; renderToday(); };
-  el.querySelectorAll('[data-replace]').forEach((b) => {
-    b.onclick = () => openReplace(n, b.dataset.replace);
-  });
-  el.querySelectorAll('[data-revert]').forEach((a) => {
-    a.onclick = (e) => { e.preventDefault(); revertMeal(n, a.dataset.revert); renderToday(); toast('План восстановлен'); };
-  });
+  return html;
 }
 
 function openReplace(n, slot) {
@@ -244,13 +199,12 @@ function openReplace(n, slot) {
     : '<p class="muted">Нет блюд этого типа. Добавьте их на вкладке «Блюда».</p>';
   showModal(`${MEAL[slot].title}, день ${n}`, body);
   $('#modal-body').querySelectorAll('[data-pick]').forEach((b) => {
-    b.onclick = () => { setMeal(n, slot, b.dataset.pick); hideModal(); renderToday(); toast('Блюдо заменено'); };
+    b.onclick = () => { setMeal(n, slot, b.dataset.pick); hideModal(); rerender(); toast('Блюдо заменено'); };
   });
 }
 
 // ---------- вкладка «Блюда» ----------
-function renderDishes() {
-  const el = $('#tab-dishes');
+function dishesHtml() {
   const types = ['all', 'breakfast', 'lunch', 'soup', 'dinner'];
   const names = { all: 'Все', breakfast: 'Завтраки', lunch: 'Обеды', soup: 'Супы', dinner: 'Ужины' };
   const q = dishQuery.trim().toLowerCase();
@@ -306,52 +260,11 @@ function renderDishes() {
       <label class="field">Как готовить</label><textarea id="d-steps" rows="2"></textarea>
       <button class="btn block" id="d-add">Добавить блюдо</button>
     </div>`;
-  el.innerHTML = html;
-
-  el.querySelectorAll('[data-filter]').forEach((b) => {
-    b.onclick = () => { dishFilter = b.dataset.filter; renderDishes(); };
-  });
-  const qi = $('#dish-q');
-  qi.oninput = () => {
-    dishQuery = qi.value;
-    const pos = qi.selectionStart;
-    renderDishes();
-    const again = $('#dish-q');
-    again.focus();
-    again.setSelectionRange(pos, pos);
-  };
-  el.querySelectorAll('[data-del]').forEach((b) => {
-    b.onclick = () => {
-      const idx = Number(b.dataset.del);
-      const dish = D.dishes[idx];
-      if (!confirm(`Удалить «${dish.name}»? Из плана оно не исчезнет, но для замены будет недоступно.`)) return;
-      D.dishes.splice(idx, 1);
-      write(KEY.dishes, D.dishes);
-      renderDishes();
-      toast('Блюдо удалено');
-    };
-  });
-  $('#d-add').onclick = () => {
-    const name = $('#d-name').value.trim();
-    if (!name) return toast('Введите название');
-    if (dishByName(name)) return toast('Такое блюдо уже есть');
-    D.dishes.push({
-      name,
-      type: $('#d-type').value,
-      emoji: $('#d-emoji').value.trim() || undefined,
-      description: $('#d-desc').value.trim() || undefined,
-      composition: $('#d-comp').value.trim(),
-      steps: $('#d-steps').value.trim()
-    });
-    write(KEY.dishes, D.dishes);
-    renderDishes();
-    toast('Блюдо добавлено');
-  };
+  return html;
 }
 
 // ---------- вкладка «Покупки» ----------
-function renderShopping() {
-  const el = $('#tab-shopping');
+function shoppingHtml() {
   const checked = read(KEY.checked, {});
   const all = [...D.bulk, ...D.weekly];
   const keyOf = (idx) => (idx < D.bulk.length ? 'b' + idx : 'w' + (idx - D.bulk.length));
@@ -378,13 +291,13 @@ function renderShopping() {
   const sum = receipts.reduce((a, r) => a + Number(r.total || 0), 0);
   const pct = all.length ? Math.round((doneCount / all.length) * 100) : 0;
 
-  el.innerHTML = `
+  return `
     <div class="shop-summary">
       <div class="row" style="justify-content:space-between">
         <div><div class="muted">Отмечено</div><div class="big">${doneCount} из ${all.length}</div></div>
         <button class="btn soft" id="reset-checks">Снять отметки</button>
       </div>
-      <div class="progress"><div class="progress-bar" style="width:${pct}%"></div></div>
+      <div class="bar"><div style="width:${pct}%"></div></div>
     </div>
     ${section('Закупка на месяц', 'Покупаем один раз, потом берём только скоропортящееся', D.bulk, 'b')}
     ${section('Каждую неделю', 'Хлеб, зелень, фрукты и овощи для салатов', D.weekly, 'w')}
@@ -408,46 +321,11 @@ function renderShopping() {
         </div>`).join('') : '<div class="empty">Чеков пока нет</div>'}
       ${receipts.length ? `<div class="total-line"><span>Всего потрачено</span><span>${sum.toLocaleString('ru-RU')} ₽</span></div>` : ''}
     </div>`;
-
-  el.querySelectorAll('input[data-key]').forEach((cb) => {
-    cb.onchange = () => {
-      const c = read(KEY.checked, {});
-      if (cb.checked) c[cb.dataset.key] = true; else delete c[cb.dataset.key];
-      write(KEY.checked, c);
-      renderShopping();
-    };
-  });
-  $('#reset-checks').onclick = () => { write(KEY.checked, {}); renderShopping(); toast('Отметки сняты'); };
-  $('#save-receipt').onclick = () => {
-    const total = parseFloat(String($('#r-total').value).replace(',', '.'));
-    if (!total) return toast('Введите сумму чека');
-    const rs = read(KEY.receipts, []);
-    rs.unshift({
-      date: $('#r-date').value,
-      store: $('#r-store').value.trim(),
-      total,
-      items: checkedNames.length,
-      note: ''
-    });
-    write(KEY.receipts, rs);
-    write(KEY.checked, {});
-    renderShopping();
-    toast('Чек сохранён');
-  };
-  el.querySelectorAll('[data-rdel]').forEach((b) => {
-    b.onclick = () => {
-      const rs = read(KEY.receipts, []);
-      rs.splice(Number(b.dataset.rdel), 1);
-      write(KEY.receipts, rs);
-      renderShopping();
-    };
-  });
 }
 
 // ---------- вкладка «Ещё» ----------
-function renderSettings() {
-  const el = $('#tab-settings');
-  el.innerHTML = `
+function settingsHtml() {
+  return `
     <div class="card">
       <div class="setting-title">Первый день плана</div>
       <p class="setting-desc">От этой даты считается день 1 из 30.</p>
@@ -455,7 +333,7 @@ function renderSettings() {
     </div>
     <div class="card">
       <div class="setting-title">База блюд и плана</div>
-      <p class="setting-desc">Изменения хранятся в этом браузере. Чтобы они попали в репозиторий, экспортируйте data.json и замените им файл в проекте.</p>
+      <p class="setting-desc">Изменения хранятся в этом браузере. Экспорт сохраняет data.json меню.</p>
       <div class="row">
         <button class="btn" id="s-export">Экспорт data.json</button>
         <label class="btn soft" style="cursor:pointer">Импорт<input id="s-import" type="file" accept="application/json" class="hidden"></label>
@@ -466,15 +344,131 @@ function renderSettings() {
       <p class="setting-desc">Удаляет локальные правки блюд, плана, замены и отметки покупок. Чеки сохраняются.</p>
       <button class="btn danger" id="s-reset">Сбросить правки</button>
     </div>`;
+}
 
-  $('#s-start').onchange = (e) => {
+// ---------- публичное API для «Ассистента» ----------
+export function menuHtml() {
+  if (loadError) return `<div class="card">Не удалось загрузить меню: <span class="muted">${esc(loadError)}</span></div>`;
+  if (!D) return '<div class="card empty">Загрузка меню…</div>';
+  const tabs = `<div class="tabline">${TABS.map(([v, l]) =>
+    `<button class="${TAB === v ? 'active' : ''}" data-mtab="${v}">${l}</button>`).join('')}</div>`;
+  const body = TAB === 'today' ? todayHtml()
+    : TAB === 'dishes' ? dishesHtml()
+    : TAB === 'shopping' ? shoppingHtml()
+    : settingsHtml();
+  return headHtml() + tabs + body;
+}
+
+// Вешает обработчики на элементы, которые только что отрисованы.
+export function menuBind() {
+  if (!D) return;
+  document.querySelectorAll('[data-mtab]').forEach((b) => {
+    b.onclick = () => { TAB = b.dataset.mtab; rerender(); };
+  });
+
+  if (TAB === 'today') {
+    const n = viewDay;
+    const prev = $('#prev'); const next = $('#next');
+    if (prev) prev.onclick = () => { viewDay--; rerender(); };
+    if (next) next.onclick = () => { viewDay++; rerender(); };
+    document.querySelectorAll('[data-replace]').forEach((b) => {
+      b.onclick = () => openReplace(n, b.dataset.replace);
+    });
+    document.querySelectorAll('[data-revert]').forEach((a) => {
+      a.onclick = (e) => { e.preventDefault(); revertMeal(n, a.dataset.revert); rerender(); toast('План восстановлен'); };
+    });
+    return;
+  }
+
+  if (TAB === 'dishes') {
+    document.querySelectorAll('[data-filter]').forEach((b) => {
+      b.onclick = () => { dishFilter = b.dataset.filter; rerender(); };
+    });
+    const qi = $('#dish-q');
+    if (qi) qi.oninput = () => {
+      dishQuery = qi.value;
+      const pos = qi.selectionStart;
+      rerender();
+      const again = $('#dish-q');
+      if (again) { again.focus(); again.setSelectionRange(pos, pos); }
+    };
+    document.querySelectorAll('[data-del]').forEach((b) => {
+      b.onclick = () => {
+        const idx = Number(b.dataset.del);
+        const dish = D.dishes[idx];
+        if (!confirm(`Удалить «${dish.name}»? Из плана оно не исчезнет, но для замены будет недоступно.`)) return;
+        D.dishes.splice(idx, 1);
+        write(KEY.dishes, D.dishes);
+        rerender();
+        toast('Блюдо удалено');
+      };
+    });
+    const add = $('#d-add');
+    if (add) add.onclick = () => {
+      const name = $('#d-name').value.trim();
+      if (!name) return toast('Введите название');
+      if (dishByName(name)) return toast('Такое блюдо уже есть');
+      D.dishes.push({
+        name,
+        type: $('#d-type').value,
+        emoji: $('#d-emoji').value.trim() || undefined,
+        description: $('#d-desc').value.trim() || undefined,
+        composition: $('#d-comp').value.trim(),
+        steps: $('#d-steps').value.trim()
+      });
+      write(KEY.dishes, D.dishes);
+      rerender();
+      toast('Блюдо добавлено');
+    };
+    return;
+  }
+
+  if (TAB === 'shopping') {
+    document.querySelectorAll('input[data-key]').forEach((cb) => {
+      cb.onchange = () => {
+        const c = read(KEY.checked, {});
+        if (cb.checked) c[cb.dataset.key] = true; else delete c[cb.dataset.key];
+        write(KEY.checked, c);
+        rerender();
+      };
+    });
+    const reset = $('#reset-checks');
+    if (reset) reset.onclick = () => { write(KEY.checked, {}); rerender(); toast('Отметки сняты'); };
+    const save = $('#save-receipt');
+    if (save) save.onclick = () => {
+      const total = parseFloat(String($('#r-total').value).replace(',', '.'));
+      if (!total) return toast('Введите сумму чека');
+      const checked = read(KEY.checked, {});
+      const count = Object.keys(checked).filter((k) => checked[k]).length;
+      const rs = read(KEY.receipts, []);
+      rs.unshift({ date: $('#r-date').value, store: $('#r-store').value.trim(), total, items: count, note: '' });
+      write(KEY.receipts, rs);
+      write(KEY.checked, {});
+      rerender();
+      toast('Чек сохранён');
+    };
+    document.querySelectorAll('[data-rdel]').forEach((b) => {
+      b.onclick = () => {
+        const rs = read(KEY.receipts, []);
+        rs.splice(Number(b.dataset.rdel), 1);
+        write(KEY.receipts, rs);
+        rerender();
+      };
+    });
+    return;
+  }
+
+  // настройки
+  const start = $('#s-start');
+  if (start) start.onchange = (e) => {
     D.startDate = e.target.value;
     write(KEY.start, D.startDate);
     viewDay = Math.min(Math.max(todayDay(), 1), D.plan.length);
-    renderAll();
+    rerender();
     toast('Дата сохранена');
   };
-  $('#s-export').onclick = () => {
+  const exp = $('#s-export');
+  if (exp) exp.onclick = () => {
     const data = { startDate: D.startDate, dishes: D.dishes, plan: D.plan, bulk: D.bulk, weekly: D.weekly };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -483,7 +477,8 @@ function renderSettings() {
     a.click();
     URL.revokeObjectURL(a.href);
   };
-  $('#s-import').onchange = async (e) => {
+  const imp = $('#s-import');
+  if (imp) imp.onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     try {
@@ -496,23 +491,24 @@ function renderSettings() {
       write(KEY.dishes, D.dishes);
       write(KEY.plan, D.plan);
       toast('Данные импортированы');
-      renderAll();
+      rerender();
     } catch (err) {
       alert('Не удалось импортировать файл: ' + err.message);
     }
   };
-  $('#s-reset').onclick = async () => {
-    if (!confirm('Сбросить локальные правки?')) return;
+  const reset = $('#s-reset');
+  if (reset) reset.onclick = async () => {
+    if (!confirm('Сбросить локальные правки меню?')) return;
     [KEY.dishes, KEY.plan, KEY.overrides, KEY.checked, KEY.start].forEach((k) => localStorage.removeItem(k));
     await loadBase();
-    renderAll();
+    rerender();
     toast('Правки сброшены');
   };
 }
 
-// ---------- загрузка и запуск ----------
+// ---------- загрузка ----------
 async function loadBase() {
-  const base = await (await fetch('data.json', { cache: 'no-store' })).json();
+  const base = await (await fetch('menu/data.json', { cache: 'no-store' })).json();
   D = {
     startDate: read(KEY.start, base.startDate),
     dishes: read(KEY.dishes, base.dishes),
@@ -523,32 +519,11 @@ async function loadBase() {
   viewDay = Math.min(Math.max(todayDay(), 1), D.plan.length);
 }
 
-function renderAll() {
-  renderHero();
-  renderToday();
-  renderDishes();
-  renderShopping();
-  renderSettings();
-}
-
-function showTab(name) {
-  document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
-  document.querySelectorAll('.tab').forEach((s) => s.classList.toggle('active', s.id === 'tab-' + name));
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-async function init() {
-  document.querySelectorAll('.tabs button').forEach((b) => {
-    b.onclick = () => showTab(b.dataset.tab);
-  });
-  $('#modal-close').onclick = hideModal;
-  $('#modal').onclick = (e) => { if (e.target.id === 'modal') hideModal(); };
+export async function menuInit(rerenderFn) {
+  rerender = rerenderFn;
   try {
     await loadBase();
-    renderAll();
   } catch (err) {
-    document.querySelector('main').innerHTML = `<div class="card">Не удалось загрузить data.json. Откройте приложение по ссылке GitHub Pages или через локальный сервер, а не файлом.<br><span class="muted">${esc(err.message)}</span></div>`;
+    loadError = err.message;
   }
 }
-
-init();
