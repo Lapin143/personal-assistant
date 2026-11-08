@@ -1,0 +1,30 @@
+{
+  "settings": { "notifyDaysAhead": 3, "currency": "₽" },
+  "people": [
+    { "id": "p1", "name": "Владислав" },
+    { "id": "p2", "name": "Партнёр" }
+  ],
+  "accounts": [
+    { "id": "a1", "name": "Карта", "owner": "shared" },
+    { "id": "a2", "name": "Наличные", "owner": "shared" }
+  ],
+  "categories": {
+    "expense": ["Продукты", "Жильё", "Коммуналка", "Транспорт", "Авто", "Связь и подписки", "Здоровье", "Одежда", "Развлечения", "Подарки", "Прочее"],
+    "income": ["Зарплата", "Подработка", "Прочее"]
+  },
+  "transactions": [],
+  "recurring": [],
+  "debts": [],
+  "goals": [],
+  "wishes": [],
+  "reminders": [],
+  "cars": [],
+  "carExpenses": [],
+  "meters": [
+    { "id": "m1", "name": "Холодная вода", "unit": "м³" },
+    { "id": "m2", "name": "Электричество", "unit": "кВт·ч" }
+  ],
+  "meterReadings": [],
+  "homeTasks": [],
+  "documents": []
+}
