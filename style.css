@@ -293,3 +293,5 @@ details.recipe b { color: #3b4742; }
 .bell-count[hidden] { display: none; }
 .li.unread { background: #f6faf8; border-radius: 12px; }
 .new-pill { font-size: 11px; background: var(--green); color: #fff; padding: 2px 7px; border-radius: 999px; margin-left: 6px; font-weight: 700; }
+.hero-actions { display: flex; gap: 8px; }
+.sections button .ico { margin-right: 4px; font-size: 15px; }

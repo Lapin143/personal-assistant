@@ -40,8 +40,8 @@ let HOUSE_TAB = 'tasks';
 let CAR_ID = null;
 
 const SECTIONS = [
-  ['dash', 'Главная'], ['menu', 'Меню'], ['fin', 'Финансы'], ['goals', 'Цели'], ['wish', 'Вишлист'], ['rem', 'Напоминания'],
-  ['car', 'Авто'], ['house', 'Дом'], ['people', 'Люди']
+  ['dash', '🏠', 'Главная'], ['menu', '🍽', 'Меню'], ['fin', '💰', 'Финансы'], ['goals', '🎯', 'Цели'],
+  ['rem', '📅', 'Напоминания'], ['car', '🚗', 'Авто'], ['house', '🏡', 'Дом']
 ];
 
 // ---------- формы ----------
@@ -197,24 +197,33 @@ function goalCard(g) {
 }
 
 function viewGoals() {
+  const tabs = `<div class="tabline">
+      <button class="${GOAL_KIND === 'long' ? 'active' : ''}" data-act="goalKind" data-v="long">🏔 Долгосрочные</button>
+      <button class="${GOAL_KIND === 'short' ? 'active' : ''}" data-act="goalKind" data-v="short">⚡ Краткосрочные</button>
+      <button class="${GOAL_KIND === 'wish' ? 'active' : ''}" data-act="goalKind" data-v="wish">🎁 Вишлист</button></div>`;
+  if (GOAL_KIND === 'wish') return tabs + wishHtml();
   const list = S.goals.filter((g) => g.kind === GOAL_KIND);
-  return `<div class="tabline">
-      <button class="${GOAL_KIND === 'long' ? 'active' : ''}" data-act="goalKind" data-v="long">Долгосрочные</button>
-      <button class="${GOAL_KIND === 'short' ? 'active' : ''}" data-act="goalKind" data-v="short">Краткосрочные</button></div>
-    <div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn" data-act="addGoal">+ Цель</button></div>
+  return tabs + `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn" data-act="addGoal">+ Цель</button></div>
     ${list.length ? list.map(goalCard).join('') : '<div class="card empty">Целей этого типа пока нет</div>'}`;
 }
 
-function viewWish() {
-  const items = [...S.wishes].sort((a, b) => (a.bought - b.bought) || (a.priority - b.priority));
+// Вишлист внутри «Целей»: желания разделены по тому, чьи они.
+function wishHtml() {
   const prio = ['', 'Высокий', 'Средний', 'Низкий'];
-  return `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn" data-act="addWish">+ Желание</button></div>
-    <div class="card">${items.length ? items.map((w) => `<div class="li">
+  const sorted = (list) => [...list].sort((a, b) => (a.bought - b.bought) || (a.priority - b.priority));
+  const known = (id) => S.people.some((p) => p.id === id);
+  const groups = [
+    ...S.people.map((p) => ({ title: p.name, icon: '👤', list: sorted(S.wishes.filter((w) => w.personId === p.id)) })),
+    { title: 'Общие', icon: '🏠', list: sorted(S.wishes.filter((w) => !known(w.personId))) }
+  ];
+  const row = (w) => `<div class="li">
       <button class="icon-btn" data-act="wishBought" data-id="${w.id}" aria-label="Отметить купленным">${w.bought ? '✅' : '⬜'}</button>
       <div class="main"><div class="t" style="${w.bought ? 'text-decoration:line-through;color:var(--done)' : ''}">${esc(w.title)}</div>
-        <div class="s">${w.price ? money(w.price) + ' · ' : ''}${prio[w.priority] || ''}${personName(w.personId) ? ' · для ' + esc(personName(w.personId)) : ''}${safeUrl(w.url) ? ` · <a href="${safeUrl(w.url)}" target="_blank" rel="noopener">ссылка</a>` : ''}</div></div>
-      <button class="icon-btn" data-act="del" data-coll="wishes" data-id="${w.id}" aria-label="Удалить">✕</button></div>`).join('')
-      : '<div class="empty">Вишлист пуст</div>'}</div>`;
+        <div class="s">${w.price ? money(w.price) + ' · ' : ''}${prio[w.priority] || ''}${safeUrl(w.url) ? ` · <a href="${safeUrl(w.url)}" target="_blank" rel="noopener">ссылка</a>` : ''}</div></div>
+      <button class="icon-btn" data-act="del" data-coll="wishes" data-id="${w.id}" aria-label="Удалить">✕</button></div>`;
+  return `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn" data-act="addWish">+ Желание</button></div>
+    ${groups.map((g) => `<div class="card"><div class="setting-title">${g.icon} ${esc(g.title)}</div>
+      ${g.list.length ? g.list.map(row).join('') : '<div class="empty">Желаний пока нет</div>'}</div>`).join('')}`;
 }
 
 function viewRem() {
@@ -327,15 +336,17 @@ function viewPeople() {
       <button class="btn danger" data-act="resetData">Сбросить всё</button></div></div>`;
 }
 
-const VIEWS = { dash: viewDash, fin: viewFin, goals: viewGoals, wish: viewWish, rem: viewRem, menu: menuHtml, car: viewCar, house: viewHouse, people: viewPeople };
+const TITLE = { ...Object.fromEntries(SECTIONS.map(([id, , l]) => [id, l])), settings: 'Настройки' };
+
+const VIEWS = { dash: viewDash, fin: viewFin, goals: viewGoals, rem: viewRem, menu: menuHtml, car: viewCar, house: viewHouse, settings: viewPeople };
 
 // ---------- отрисовка ----------
 function render() {
   if (!S) return;
-  $('#hero-title').textContent = SECTIONS.find((s) => s[0] === SEC)[1];
+  $('#hero-title').textContent = TITLE[SEC];
   $('#hero-sub').textContent = `${fmtDate(todayIso())} · ${personName(ME) || 'Гость'}`;
-  $('#sections').innerHTML = SECTIONS.map(([id, l]) =>
-    `<button class="${id === SEC ? 'active' : ''}" data-act="sec" data-v="${id}">${l}</button>`).join('');
+  $('#sections').innerHTML = SECTIONS.map(([id, ico, l]) =>
+    `<button class="${id === SEC ? 'active' : ''}" data-act="sec" data-v="${id}"><span class="ico">${ico}</span>${l}</button>`).join('');
   $('#main').innerHTML = VIEWS[SEC]();
   const n = unreadCount();
   const bc = $('#bell-count');
