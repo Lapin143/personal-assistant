@@ -359,6 +359,28 @@ export function menuHtml() {
   return headHtml() + tabs + body;
 }
 
+// Краткая сводка на главной: блюда на сегодня и переход в раздел.
+export function menuSummaryHtml() {
+  if (!D || loadError) return '';
+  const t = todayDay();
+  const max = D.plan.length;
+  const n = Math.min(Math.max(t, 1), max);
+  const status = t < 1 ? 'План ещё не начался' : t > max ? 'План завершён' : `День ${n} из ${max}`;
+  const inPlan = t >= 1 && t <= max;
+  const rows = !inPlan ? '' : ['breakfast', 'lunch', 'dinner'].map((slot) => {
+    const name = currentMeal(n, slot);
+    const info = dishInfo(name);
+    return `<div class="li">
+      <div class="main"><div class="t">${esc(info.emoji)} ${esc(name)}</div>
+      <div class="s">${MEAL[slot].icon} ${MEAL[slot].title}${isWeekend(n) && slot === 'lunch' ? ' · суп' : ''}</div></div></div>`;
+  }).join('');
+  return `<div class="card">
+    <div class="row" style="justify-content:space-between">
+      <div><div class="setting-title" style="margin:0">Меню на сегодня</div><div class="note">${esc(status)}</div></div>
+      <button class="btn soft" data-act="sec" data-v="menu">Открыть меню</button></div>
+    ${rows}</div>`;
+}
+
 // Вешает обработчики на элементы, которые только что отрисованы.
 export function menuBind() {
   if (!D) return;

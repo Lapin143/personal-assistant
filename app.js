@@ -1,4 +1,4 @@
-import { menuHtml, menuBind, menuInit } from './menu/menu.js';
+import { menuHtml, menuBind, menuInit, menuSummaryHtml } from './menu/menu.js';
 import { iso, todayIso, addDays, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js';
 
 // ---------- помощники ----------
@@ -40,8 +40,8 @@ let HOUSE_TAB = 'tasks';
 let CAR_ID = null;
 
 const SECTIONS = [
-  ['dash', 'Главная'], ['fin', 'Финансы'], ['goals', 'Цели'], ['wish', 'Вишлист'], ['rem', 'Напоминания'],
-  ['menu', 'Меню'], ['car', 'Авто'], ['house', 'Дом'], ['docs', 'Документы'], ['people', 'Люди']
+  ['dash', 'Главная'], ['menu', 'Меню'], ['fin', 'Финансы'], ['goals', 'Цели'], ['wish', 'Вишлист'], ['rem', 'Напоминания'],
+  ['car', 'Авто'], ['house', 'Дом'], ['people', 'Люди']
 ];
 
 // ---------- формы ----------
@@ -107,6 +107,7 @@ function viewDash() {
   const s = monthSummary(S, ym, ME);
   const up = upcoming(S, t, 14);
   return `
+    ${menuSummaryHtml()}
     <div class="grid-2" style="margin-bottom:12px">
       <div class="stat"><div class="lbl">Доходы, ${monthName(ym)}</div><div class="val pos">${money(s.income)}</div></div>
       <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(s.expense)}</div></div>
@@ -294,19 +295,6 @@ function viewHouse() {
   <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn soft" data-act="addMeter">+ Счётчик</button></div></div>`;
 }
 
-function viewDocs() {
-  const docs = [...S.documents].sort((a, b) => ((a.expires || '9999') < (b.expires || '9999') ? -1 : 1));
-  return `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn" data-act="addDoc">+ Документ</button></div>
-    <div class="card">${docs.length ? docs.map((d) => {
-      const left = d.expires ? daysBetween(todayIso(), d.expires) : null;
-      return `<div class="li">
-        <div class="main"><div class="t">${esc(d.title)}</div>
-        <div class="s">${personName(d.personId) || 'Общий'}${d.expires ? ' · до ' + fmtDate(d.expires) : ''}</div></div>
-        ${left !== null ? `<span class="chip ${left < 30 ? 'dinner' : 'lunch'}">${left < 0 ? 'истёк' : left + ' дн.'}</span>` : ''}
-        <button class="icon-btn" data-act="del" data-coll="documents" data-id="${d.id}" aria-label="Удалить">✕</button></div>`;
-    }).join('') : '<div class="empty">Документов пока нет</div>'}</div>`;
-}
-
 function viewPeople() {
   return `
     <div class="card"><div class="setting-title">Кто вы</div>
@@ -339,7 +327,7 @@ function viewPeople() {
       <button class="btn danger" data-act="resetData">Сбросить всё</button></div></div>`;
 }
 
-const VIEWS = { dash: viewDash, fin: viewFin, goals: viewGoals, wish: viewWish, rem: viewRem, menu: menuHtml, car: viewCar, house: viewHouse, docs: viewDocs, people: viewPeople };
+const VIEWS = { dash: viewDash, fin: viewFin, goals: viewGoals, wish: viewWish, rem: viewRem, menu: menuHtml, car: viewCar, house: viewHouse, people: viewPeople };
 
 // ---------- отрисовка ----------
 function render() {
@@ -479,15 +467,6 @@ const ADD = {
   ], (o) => {
     if (!o.name) return 'Введите название';
     S.meters.push({ id: uid(), name: o.name, unit: o.unit || '' });
-    return null;
-  }),
-  addDoc: () => openForm('Документ', [
-    { k: 'title', t: 'text', l: 'Название', ph: 'Паспорт, полис, гарантия' },
-    { k: 'personId', t: 'select', l: 'Чей', opts: personOpts(), v: '' },
-    { k: 'expires', t: 'date', l: 'Действует до (необязательно)' }
-  ], (o) => {
-    if (!o.title) return 'Введите название';
-    S.documents.push({ id: uid(), title: o.title, personId: o.personId, expires: o.expires });
     return null;
   }),
   addPerson: () => openForm('Новый человек', [{ k: 'name', t: 'text', l: 'Имя' }], (o) => {
