@@ -669,15 +669,19 @@ export function dashTop() {
   const unpaid = s.recurring.filter((r) => r.active && !s.confirmed[`${r.id}|${month}`]).reduce((a, r) => a + (Number(r.amount) || 0), 0);
   const yearlyLeft = s.yearly.filter((x) => x.month === m && x.day > dayNow).reduce((a, x) => a + (Number(x.amount) || 0), 0);
   const end = expense + unpaid + yearlyLeft + dailyAvg * left;
+  // Поступления, которые ещё не подтверждены в этом месяце, входят в прогноз дохода.
+  const incomeLeft = s.incomes.filter((i) => i.active && !s.incomeConfirmed[`${i.id}|${month}`])
+    .reduce((a, i) => a + (Number(i.amount) || 0), 0);
+  const incomeEnd = income + incomeLeft;
   return `<div class="card money-main">
     <div class="row" style="justify-content:space-between"><div class="setting-title" style="margin:0">Доходы и расходы</div>
       <span class="note">${monthTitle(month)}</span></div>
     <div class="grid-2" style="margin-top:10px">
-      <div class="stat"><div class="lbl">Доходы</div><div class="val pos">${money(income)}</div></div>
-      <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(expense)}</div></div></div>
-    <div class="forecast-row"><div><div class="lbl">Прогноз расходов к концу месяца</div>
-      <div class="note">запланировано ещё ${money(unpaid + yearlyLeft)}, плюс среднее за 30 дней × ${left} дн.</div></div>
-      <b>≈ ${money(end)}</b></div></div>`;
+      <div class="stat"><div class="lbl">Доходы</div><div class="val pos">${money(income)}</div>
+        <div class="note">≈ ${money(incomeEnd)} к концу месяца</div></div>
+      <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(expense)}</div>
+        <div class="note">≈ ${money(end)} к концу месяца</div></div></div>
+    <p class="note" style="margin:8px 0 0">Прогноз: запланированные платежи и поступления плюс среднее за 30 дней на ${left} дн.</p></div>`;
 }
 
 function reportText(month) {
