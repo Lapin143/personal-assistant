@@ -230,7 +230,7 @@ export function budgetSettingsHtml() {
   return `<div class="card">
       <div class="row" style="justify-content:space-between"><div class="setting-title" style="margin:0">Лимиты</div>
         <button class="btn" data-act="saveBudgets">Сохранить</button></div>
-      <p class="setting-desc">Новые лимиты применятся с ${esc(monthTitle(nextMonthYm()))}. Текущий месяц не меняется.${pend ? ' Уже запланированы на следующий месяц: ' + esc(monthTitle(nextMonthYm())) + '.' : ''}</p>
+      <p class="setting-desc">Новые лимиты действуют с ${esc(monthTitle(nextMonthYm()))}, текущий месяц не меняется.${pend ? ' Сохранённый набор уже ждёт этого месяца.' : ''}</p>
       <div class="sub-title">По категориям, ₽ в месяц</div>${rows}
       ${people ? `<div class="sub-title">Личные, ₽ в месяц</div>${people}` : ''}
     </div>`;
