@@ -173,18 +173,19 @@ function refreshMonth(ym) {
   }
 }
 
+// Возврат в черновик: меню можно снова редактировать. Записи о закупках в «Финансах» остаются,
+// в меню статусы «куплено» сбрасываются.
 function unlockMonth(ym) {
   const m = monthRec(ym);
   const weeks = monthWeeks(ym);
-  if (m.longBought || weeks.some((mon) => (M().weeks[mon] || {}).status === 'bought')) {
-    return 'Нельзя вернуть в черновик: закупка уже сделана';
-  }
   m.status = 'draft';
   m.dirty = false;
+  m.longBought = false;
   delete m.long;
   for (const mon of weeks) {
     const w = M().weeks[mon];
-    if (!w || w.status !== 'confirmed') continue;
+    if (!w || (w.status !== 'confirmed' && w.status !== 'bought')) continue;
+    if (w.status === 'bought') { w.status = 'draft'; delete w.list; delete w.checked; delete w.purchaseId; continue; }
     if (weekDays(mon).some((d) => monthConfirmed(d.slice(0, 7)))) { w.list = weeklyItems(mon); continue; }
     w.status = 'draft';
     delete w.list;
@@ -349,8 +350,8 @@ function planHtml() {
   const actions = m.status === 'confirmed'
     ? `${m.dirty ? `<div class="warn-box">Меню изменили после подтверждения. Обновите списки покупок.</div>
          <button class="btn soft block" data-mact="refresh" data-ym="${ym}">Обновить списки</button>` : ''}
-       <p class="note">Месяц подтверждён: списки созданы во вкладке «Покупки».</p>
-       <button class="btn soft block" data-mact="unlock" data-ym="${ym}" ${bought ? 'disabled' : ''}>Вернуть в черновик</button>`
+       <p class="note">Месяц подтверждён: списки созданы во вкладке «Покупки».${bought ? ' Закупки уже учтены в «Финансах»: при возврате записи там останутся.' : ''}</p>
+       <button class="btn soft block" data-mact="unlock" data-ym="${ym}">Вернуть в черновик</button>`
     : `<button class="btn soft block" data-mact="fill" data-ym="${ym}">Заполнить пустые дни</button>
        <button class="btn block" data-mact="confirm-month" data-ym="${ym}" ${filled ? '' : 'disabled'}>Подтвердить месяц и создать списки</button>
        <p class="note">Автозаполнение берёт блюда из библиотеки. Снимите «едим дома» там, где не будете есть дома, и заполните только остальное.</p>`;
@@ -752,7 +753,7 @@ function act(b) {
   }
   else if (a === 'confirm-month') { confirmMonth(ym); ctx.toast('Месяц подтверждён, списки созданы'); TAB = 'shop'; }
   else if (a === 'refresh') { refreshMonth(ym); ctx.toast('Списки обновлены'); }
-  else if (a === 'unlock') { const err = unlockMonth(ym); ctx.toast(err || 'Месяц снова в черновике'); }
+  else if (a === 'unlock') { const err = unlockMonth(ym); ctx.toast(err || 'Месяц снова в черновике: можно редактировать'); }
   else if (a === 'buy-week') { openPurchase({ kind: 'week', mon: b.dataset.mon, label: weekLabel(b.dataset.mon) }); return; }
   else if (a === 'buy-long') { openPurchase({ kind: 'long', ym, label: `запас на ${monthTitle(ym)}` }); return; }
   else if (a === 'dish-new') { openDishForm(null); return; }

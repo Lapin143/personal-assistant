@@ -2,7 +2,7 @@
 // чеки (PDF, CSV, TXT, фото), голосовой ввод, списки, идеи и поездки, подарки, шаги, лента и отчёт.
 // Модуль не знает о DOM приложения напрямую: всё нужное передаётся через featuresInit(ctx).
 import { upcoming, addDays } from './core.js';
-import { readReceiptLines, parseReceiptLines } from './menu/planner.js?v=b5';
+import { readReceiptLines, parseReceiptLines } from './menu/planner.js?v=b6';
 
 let F = null;
 const S = () => F.S();
@@ -209,8 +209,8 @@ function yearHtml(month) {
   const pct = (v) => Math.round((v / max) * 100);
   const list = s.yearly.slice().sort((a, b) => (a.month - b.month) || (a.day - b.day));
   const period = REPORT_PERIOD && REPORT_PERIOD.startsWith(y) ? REPORT_PERIOD : month;
-  const picker = [[y, 'Весь год'], ...MONTHS_SHORT.map((l, i) => [`${y}-${String(i + 1).padStart(2, '0')}`, l])]
-    .map(([v, l]) => `<button class="${v === period ? 'active' : ''}" data-act="repPeriod" data-v="${v}">${l}</button>`).join('');
+  const options = [[y, `Весь ${y} год`], ...Array.from({ length: 12 }, (_, i) => `${y}-${String(i + 1).padStart(2, '0')}`).map((v) => [v, monthTitle(v)])]
+    .map(([v, l]) => `<option value="${v}" ${v === period ? 'selected' : ''}>${esc(l)}</option>`).join('');
   return `<div class="card">
       <div class="setting-title">Доходы и расходы по месяцам, ${y}</div>
       <p class="setting-desc">План: регулярные поступления и платежи, плюс ежегодные платежи в свой месяц.</p>
@@ -230,7 +230,8 @@ function yearHtml(month) {
     <div class="card">
       <div class="setting-title">Отчёт</div>
       <p class="setting-desc">Выберите месяц или весь год и отправьте сводку.</p>
-      <div class="tabline">${picker}</div>
+      <label class="field" for="rep-period">Период</label>
+      <select id="rep-period" data-rep>${options}</select>
       ${reportHtml(period)}
     </div>`;
 }
@@ -752,7 +753,6 @@ export const EXTRA_CATS_ACTIONS = {
     if (!name) return false;
     S().remCats = [...remCatList(), { id: 'c' + uid(), name, on: true }];
   },
-  repPeriod: (d) => { REPORT_PERIOD = d.v; },
   remCatEdit: (d) => {
     const cats = readCatsFromDom();
     REM_CAT_EDIT = REM_CAT_EDIT === d.id ? null : d.id;
@@ -795,3 +795,11 @@ export const EXTRA_CATS_ACTIONS = {
 };
 
 export const EXTRA_ACTIONS_ALL = { ...EXTRA_ACTIONS, ...EXTRA_CATS_ACTIONS };
+
+// Выбор периода отчёта: один выпадающий список.
+document.addEventListener('change', (e) => {
+  const sel = e.target.closest && e.target.closest('select[data-rep]');
+  if (!sel || !F) return;
+  REPORT_PERIOD = sel.value;
+  F.render();
+});
