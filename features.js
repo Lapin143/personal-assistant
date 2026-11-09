@@ -216,24 +216,55 @@ function budgetHtml(month) {
       <p class="setting-desc">Считаются только ваши и общие траты. Личные операции партнёра в расчёт не входят.</p>${people}</div>` : ''}`;
 }
 
-// Настройки → Финансы: лимиты. Новые значения действуют с следующего месяца.
+// Настройки → Финансы: лимиты по тратам. Инфографика по категориям; шестерёнка открывает все категории.
+// Новые значения действуют с следующего месяца.
 export function budgetSettingsHtml() {
   const s = S();
-  const cur = limitsFor(today().slice(0, 7));
-  const pend = (s.budgetPlans || []).find((p) => p.from === nextMonthYm());
+  const curYm = today().slice(0, 7);
+  const cur = limitsFor(curYm);
+  const nxt = nextMonthYm();
+  const pend = (s.budgetPlans || []).find((p) => p.from === nxt);
+  const L = pend ? pend.budgets : cur.budgets;
+  const byCat = {};
+  for (const o of visible().filter((o) => o.date.startsWith(curYm) && o.type !== 'income')) byCat[o.category] = (byCat[o.category] || 0) + (Number(o.amount) || 0);
+  const withLimit = s.categories.expense.filter((c) => Number(L[c]) > 0);
+  const rows = withLimit.map((c) => {
+    const lim = Number(L[c]);
+    const sp = byCat[c] || 0;
+    const pct = Math.round((sp / lim) * 100);
+    const cls = pct >= 100 ? 'over' : pct >= 80 ? 'warn' : '';
+    return `<div class="bud-row">
+      <div class="row" style="justify-content:space-between"><span class="t">${esc(c)}</span>
+        <span class="note">${money(sp)} из ${money(lim)}</span></div>
+      <div class="bar ${cls}"><div style="width:${Math.min(100, pct)}%"></div></div></div>`;
+  }).join('');
+  const total = withLimit.reduce((a, c) => a + Number(L[c]), 0);
+  return `<div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <div class="setting-title" style="margin:0">Лимиты по тратам</div>
+        <button class="icon-btn" data-act="limEdit" aria-label="Изменить лимиты">${svg('gear', 18)}</button></div>
+      <p class="setting-desc">${pend ? 'Новые лимиты уже ждут ' + esc(monthTitle(nxt)) + '. ' : ''}Действуют с следующего месяца, текущий не меняется. Всего в месяц: ${money(total)}.</p>
+      ${rows || '<div class="empty">Лимитов нет. Нажмите шестерёнку, чтобы задать их.</div>'}
+    </div>`;
+}
+
+// Шестерёнка: все категории и личные лимиты в одном окне.
+function limEditHtml() {
+  const s = S();
+  const curYm = today().slice(0, 7);
+  const nxt = nextMonthYm();
+  const pend = (s.budgetPlans || []).find((p) => p.from === nxt);
+  const cur = limitsFor(curYm);
   const B = pend ? pend.budgets : cur.budgets;
   const A = pend ? pend.allowances : cur.allowances;
   const rows = s.categories.expense.map((c) => `<div class="lim-row"><span>${esc(c)}</span>
       <input data-bud="${esc(c)}" inputmode="decimal" placeholder="без лимита" value="${Number(B[c]) || ''}" aria-label="Лимит: ${esc(c)}"></div>`).join('');
   const people = s.people.map((p) => `<div class="lim-row"><span>${esc(p.name)}</span>
       <input data-alw="${p.id}" inputmode="decimal" placeholder="без лимита" value="${Number(A[p.id]) || ''}" aria-label="Личный лимит: ${esc(p.name)}"></div>`).join('');
-  return `<div class="card">
-      <div class="row" style="justify-content:space-between"><div class="setting-title" style="margin:0">Лимиты</div>
-        <button class="btn" data-act="saveBudgets">Сохранить</button></div>
-      <p class="setting-desc">Новые лимиты действуют с ${esc(monthTitle(nextMonthYm()))}, текущий месяц не меняется.${pend ? ' Сохранённый набор уже ждёт этого месяца.' : ''}</p>
-      <div class="sub-title">По категориям, ₽ в месяц</div>${rows}
-      ${people ? `<div class="sub-title">Личные, ₽ в месяц</div>${people}` : ''}
-    </div>`;
+  return `<p class="setting-desc">Новые лимиты действуют с ${esc(monthTitle(nxt))}. Пустое поле — без лимита.</p>
+    <div class="sub-title">По категориям, ₽ в месяц</div>${rows}
+    ${people ? `<div class="sub-title">Личные, ₽ в месяц</div>${people}` : ''}
+    <div style="margin-top:12px"><button class="btn block" id="lim-save">Сохранить</button></div>`;
 }
 
 function barRows(rows, max) {
@@ -461,6 +492,15 @@ export const FEATURE_ADD = {
 const itemOf = (coll, id) => S()[coll].find((x) => x.id === id);
 
 export const FEATURE_ACTIONS = {
+  limEdit: () => {
+    F.openModal('Лимиты по тратам', limEditHtml());
+    document.querySelector('#lim-save').onclick = () => {
+      FEATURE_ACTIONS.saveBudgets();
+      F.closeModal();
+      F.render();
+    };
+    return false;
+  },
   saveBudgets: () => {
     const s = S();
     const budgets = {};
