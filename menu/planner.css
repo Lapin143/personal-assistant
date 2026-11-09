@@ -14,9 +14,14 @@
 .pl-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--sub);font-weight:600}
 .pl-toggle input{width:18px;height:18px;accent-color:#2f5d50}
 .pl-actions{display:grid;gap:8px;margin-top:12px}
-.pill-draft{background:var(--chip)}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;font-size:13px;font-weight:700;line-height:1.2;white-space:nowrap;flex-shrink:0}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.7}
+.pill-draft{background:var(--chip);color:var(--sub)}
 .pill-confirmed{background:#e3efe9;color:#2f5d50}
 .pill-bought{background:#2f5d50;color:#fff}
+.pill-bought::before{content:"✓";width:auto;height:auto;background:none;opacity:1}
+[data-theme="dark"] .pill-confirmed{background:#23392f;color:#a9d8c4}
+[data-theme="dark"] .pill-bought{background:#5b9a84;color:#0f1f19}
 .warn-box{background:#fff4e0;color:#7a4a00;border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:14px}
 [data-theme="dark"] .warn-box{background:#3a2f1a;color:#f0c987}
 .shop-summary{background:var(--surface);border:1px solid var(--row-line);border-radius:14px;padding:14px;margin-bottom:12px}
