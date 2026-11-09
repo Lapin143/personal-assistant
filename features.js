@@ -1,4 +1,4 @@
-// Новые разделы «Ассистента»: бюджет и лимиты, прогноз, подушка безопасности, ежегодные платежи,
+// Новые разделы «Ассистента»: бюджет и лимиты, прогноз, подушка безопасности,
 // чеки (PDF, CSV, TXT, фото), голосовой ввод, списки, идеи и поездки, подарки, шаги, лента и отчёт.
 // Модуль не знает о DOM приложения напрямую: всё нужное передаётся через featuresInit(ctx).
 import { upcoming, addDays } from './core.js';
@@ -39,7 +39,6 @@ export function featuresInit(ctx) { F = ctx; }
 export function ensureData(s) {
   s.budgets ||= {};
   s.allowances ||= {};
-  s.yearly ||= [];
   s.lists ||= [];
   s.ideas ||= [];
   s.gifts ||= [];
@@ -97,13 +96,12 @@ function forecastHtml() {
   const unpaidRegular = s.recurring
     .filter((r) => r.active && !s.confirmed[`${r.id}|${month}`])
     .reduce((a, r) => a + (Number(r.amount) || 0), 0);
-  const yearlyLeft = s.yearly.filter((x) => x.month === m && x.day > dayNow).reduce((a, x) => a + (Number(x.amount) || 0), 0);
-  const end = spent + unpaidRegular + yearlyLeft + dailyAvg * left;
+  const end = spent + unpaidRegular + dailyAvg * left;
   return `<div class="card"><div class="setting-title">Прогноз на ${monthTitle(month)}</div>
     <div class="grid-2">
       <div class="stat"><div class="lbl">Уже потрачено</div><div class="val">${money(spent)}</div></div>
       <div class="stat"><div class="lbl">Расходы к концу месяца</div><div class="val neg">≈ ${money(end)}</div></div></div>
-    <p class="note" style="margin-top:8px">Доходов в месяце: ${money(income)}. Ещё запланировано: регулярные ${money(unpaidRegular)}, ежегодные ${money(yearlyLeft)}. Остальное — среднее за 30 дней × оставшиеся дни.</p></div>`;
+    <p class="note" style="margin-top:8px">Доходов в месяце: ${money(income)}. Ещё запланировано: регулярные ${money(unpaidRegular)}. Остальное — среднее за 30 дней × оставшиеся дни.</p></div>`;
 }
 
 function liRow(x) {
@@ -202,31 +200,22 @@ function yearHtml(month) {
   const incomeMonthly = s.incomes.filter((i) => i.active).reduce((a, i) => a + (Number(i.amount) || 0), 0);
   const rows = MONTHS_SHORT.map((label, i) => ({
     label,
-    exp: regular + s.yearly.filter((x) => x.month === i + 1).reduce((a, x) => a + (Number(x.amount) || 0), 0),
+    exp: regular,
     inc: incomeMonthly
   }));
   const max = Math.max(1, ...rows.flatMap((r) => [r.exp, r.inc]));
   const pct = (v) => Math.round((v / max) * 100);
-  const list = s.yearly.slice().sort((a, b) => (a.month - b.month) || (a.day - b.day));
   const period = REPORT_PERIOD && REPORT_PERIOD.startsWith(y) ? REPORT_PERIOD : month;
   const options = [[y, `Весь ${y} год`], ...Array.from({ length: 12 }, (_, i) => `${y}-${String(i + 1).padStart(2, '0')}`).map((v) => [v, monthTitle(v)])]
     .map(([v, l]) => `<option value="${v}" ${v === period ? 'selected' : ''}>${esc(l)}</option>`).join('');
   return `<div class="card">
       <div class="setting-title">Доходы и расходы по месяцам, ${y}</div>
-      <p class="setting-desc">План: регулярные поступления и платежи, плюс ежегодные платежи в свой месяц.</p>
+      <p class="setting-desc">План: регулярные поступления и платежи по месяцам.</p>
       <div class="year-legend"><span><i class="lg inc"></i>Доходы</span><span><i class="lg exp"></i>Расходы</span></div>
       ${rows.map((r) => `<div class="year-row"><span class="ym">${r.label}</span>
         <div class="year-bars"><div class="yb inc" style="width:${pct(r.inc)}%"></div><div class="yb exp" style="width:${pct(r.exp)}%"></div></div>
         <span class="yv"><span class="inc-t">${money(r.inc)}</span><br><span class="exp-t">${money(r.exp)}</span></span></div>`).join('')}
     </div>
-    <div class="card"><div class="row" style="justify-content:space-between">
-      <div class="setting-title">Ежегодные платежи</div><button class="btn" data-act="addYearly">+ Платёж</button></div>
-      ${list.length ? list.map((x) => `<div class="li">
-        <div class="main"><div class="t">${esc(x.title)}</div>
-        <div class="s">${x.day}-го ${MONTHS[x.month - 1]}${x.personId ? ' · ' + esc(personName(x.personId)) : ''}</div></div>
-        <div class="amt exp">−${money(x.amount)}</div>
-        <button class="icon-btn" data-act="del" data-coll="yearly" data-id="${x.id}" aria-label="Удалить">${X()}</button></div>`).join('')
-        : '<div class="empty">Ежегодных платежей нет: страховка, налог, годовая подписка</div>'}</div>
     <div class="card">
       <div class="setting-title">Отчёт</div>
       <p class="setting-desc">Выберите месяц или весь год и отправьте сводку.</p>
@@ -297,16 +286,9 @@ export function viewLists() {
 
 
 // ---------- напоминания для колокольчика ----------
-const lastDayOf = (y, m) => new Date(y, m, 0).getDate();
 export function extraReminders(t, days) {
   const s = S();
   const out = [];
-  const [yy] = t.split('-').map(Number);
-  for (const x of s.yearly) for (const yr of [yy, yy + 1]) {
-    const d = Math.min(x.day, lastDayOf(yr, x.month));
-    const date = `${yr}-${String(x.month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    if (date >= t && date <= addDays(t, days)) out.push({ kind: 'pay', title: x.title, date, amount: x.amount, personId: x.personId });
-  }
   return out;
 }
 
@@ -411,19 +393,6 @@ export const FEATURE_ADD = {
     if (!o.title) return 'Введите название';
     S().lists.push({ id: uid(), title: o.title, items: [] });
     return null;
-  }),
-  addYearly: () => simpleForm('Ежегодный платёж', [
-    { k: 'title', t: 'text', l: 'Название', ph: 'Страховка, налог, подписка' },
-    { k: 'amount', t: 'number', l: 'Сумма' },
-    { k: 'month', t: 'select', l: 'Месяц', opts: MONTHS.map((m, i) => [String(i + 1), m]), v: String(new Date().getMonth() + 1) },
-    { k: 'day', t: 'number', l: 'День (1–31)', v: 1 },
-    { k: 'category', t: 'select', l: 'Категория', opts: catOpts(), v: 'Прочее' },
-    { k: 'personId', t: 'select', l: 'Чей', opts: [['', 'Общее'], ...personOptsReal()], v: '' }
-  ], (o) => {
-    if (!o.title || o.amount === '' || o.amount <= 0) return 'Заполните название и сумму';
-    S().yearly.push({ id: uid(), title: o.title, amount: o.amount, month: Number(o.month), day: Math.min(31, Math.max(1, Number(o.day) || 1)),
-      category: o.category, personId: o.personId });
-    return null;
   })
 };
 
@@ -509,7 +478,6 @@ function eventsOfMonth(ym) {
     }
   }
   for (const x of s.recurring) if (x.active) add(at(x.day), 'pay', x.title, x.amount, { personId: x.personId });
-  for (const x of s.yearly) if (x.month === m) add(at(x.day), 'pay', x.title, x.amount, { personId: x.personId });
   for (const d of s.debts) if (d.remaining > 0) add(at(d.dueDay || 10), 'pay', `Кредит: ${d.title}`, d.monthly);
   for (const i of s.incomes) if (i.active) add(at(i.day), 'income', i.title, i.amount, { id: i.id, coll: 'incomes', personId: i.personId });
   return out;
@@ -699,8 +667,7 @@ export function dashTop() {
   const dayNow = Number(t.slice(8));
   const left = lastDay(y, m) - dayNow;
   const unpaid = s.recurring.filter((r) => r.active && !s.confirmed[`${r.id}|${month}`]).reduce((a, r) => a + (Number(r.amount) || 0), 0);
-  const yearlyLeft = s.yearly.filter((x) => x.month === m && x.day > dayNow).reduce((a, x) => a + (Number(x.amount) || 0), 0);
-  const end = expense + unpaid + yearlyLeft + dailyAvg * left;
+  const end = expense + unpaid + dailyAvg * left;
   // Поступления, которые ещё не подтверждены в этом месяце, входят в прогноз дохода.
   const incomeLeft = s.incomes.filter((i) => i.active && !s.incomeConfirmed[`${i.id}|${month}`])
     .reduce((a, i) => a + (Number(i.amount) || 0), 0);
