@@ -376,17 +376,15 @@ function checksList(scope, items, checked) {
   </label>`).join('');
 }
 
-function shopHtml() {
-  const ym = monthSel;
-  const m = monthRec(ym);
-  if (m.status !== 'confirmed') {
-    return `<div class="card empty">Сначала подтвердите месяц во вкладке «План». Тогда появятся списки: запас на месяц и по одному списку на каждую неделю.</div>`;
-  }
+let SHOP_TAB = null;
+const shortWeek = (mon) => { const d = new Date(mon + 'T00:00'); return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`; };
+
+function longCardHtml(ym, m) {
   const longItems = (m.long && m.long.items) || [];
   const longChecked = (m.long && m.long.checked) || {};
   const longGroups = {};
   for (const i of longItems) (longGroups[i.cat] = longGroups[i.cat] || []).push(i);
-  const longCard = `<div class="shop-card">
+  return `<div class="shop-card">
     <h3>Запас на месяц · покупаем один раз</h3>
     ${m.dirty ? '<div class="warn-box">Меню изменили: обновите списки во вкладке «План».</div>' : ''}
     ${m.longBought ? '<p class="note">Запас куплен и сохранён в операции.</p>'
@@ -396,14 +394,14 @@ function shopHtml() {
         : '<div class="empty">В меню нет товаров длительного хранения</div>'}
       ${longItems.length ? `<div style="margin-top:12px">${purchaseBtn('Запас куплен', { act: 'buy-long', attrs: `data-ym="${ym}"` })}</div>` : ''}`}
   </div>`;
-  const weekCards = monthWeeks(ym).map((mon) => {
-    const w = M().weeks[mon] || {};
-    if (!w.list) return '';
-    const checked = w.checked || {};
-    const groups = {};
-    for (const i of w.list) (groups[i.cat] = groups[i.cat] || []).push(i);
-    const bought = w.status === 'bought';
-    return `<div class="shop-card">
+}
+
+function weekCardHtml(mon, w) {
+  const checked = w.checked || {};
+  const groups = {};
+  for (const i of w.list) (groups[i.cat] = groups[i.cat] || []).push(i);
+  const bought = w.status === 'bought';
+  return `<div class="shop-card">
       <div class="row" style="justify-content:space-between">
         <h3 style="margin:0">Неделя ${esc(weekLabel(mon))}</h3>
         <span class="pill ${bought ? 'pill-bought' : 'pill-confirmed'}">${bought ? 'Куплено' : 'Ожидает закупки'}</span></div>
@@ -414,9 +412,29 @@ function shopHtml() {
         : '<div class="empty">На эту неделю продуктов нет</div>'}
       ${bought ? '' : `<div style="margin-top:12px">${purchaseBtn('Закупка сделана', { act: 'buy-week', attrs: `data-mon="${mon}"` })}</div>`}
     </div>`;
-  }).join('');
-  return longCard + weekCards;
 }
+
+// Списки покупок переключаются вкладками: запас на месяц и по одной вкладке на неделю.
+function shopHtml() {
+  const ym = monthSel;
+  const m = monthRec(ym);
+  if (m.status !== 'confirmed') {
+    return `<div class="card empty">Сначала подтвердите месяц во вкладке «План». Тогда появятся списки: запас на месяц и по одному списку на каждую неделю.</div>`;
+  }
+  const cards = [{ id: 'long', label: 'Запас', html: longCardHtml(ym, m) }];
+  for (const mon of monthWeeks(ym)) {
+    const w = M().weeks[mon] || {};
+    if (!w.list) continue;
+    cards.push({ id: mon, label: `${w.status === 'bought' ? '✓ ' : ''}${shortWeek(mon)}`, html: weekCardHtml(mon, w) });
+  }
+  const today = ctx.todayIso();
+  const todayWeek = cards.find((c) => c.id !== 'long' && weekDays(c.id).includes(today));
+  const activeId = cards.some((c) => c.id === SHOP_TAB) ? SHOP_TAB : (todayWeek || cards[0]).id;
+  const active = cards.find((c) => c.id === activeId);
+  const tabs = `<div class="shop-tabs" role="tablist">${cards.map((c) => `<button role="tab" aria-selected="${c.id === activeId}" class="${c.id === activeId ? 'active' : ''}" data-stab="${esc(c.id)}">${esc(c.label)}</button>`).join('')}</div>`;
+  return tabs + active.html;
+}
+
 
 // ---------- вкладка «Статистика» ----------
 function statsHtml() {
@@ -742,6 +760,7 @@ export function plannerBind() {
   const root = document.querySelector('#main');
   root.querySelectorAll('[data-mtab]').forEach((b) => { b.onclick = () => { TAB = b.dataset.mtab; ctx.render(); }; });
   root.querySelectorAll('[data-mact]').forEach((b) => { b.onclick = () => act(b); });
+  root.querySelectorAll('[data-stab]').forEach((b) => { b.onclick = () => { SHOP_TAB = b.dataset.stab; ctx.render(); }; });
   root.querySelectorAll('select[data-slot]').forEach((s) => {
     s.onchange = () => { setDay(s.dataset.day, { [s.dataset.slot]: s.value }); ctx.render(); };
   });
