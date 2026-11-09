@@ -2,7 +2,7 @@
 // чеки (PDF, CSV, TXT, фото), голосовой ввод, списки, идеи и поездки, подарки, шаги, лента и отчёт.
 // Модуль не знает о DOM приложения напрямую: всё нужное передаётся через featuresInit(ctx).
 import { upcoming, addDays } from './core.js';
-import { readReceiptLines, parseReceiptLines } from './menu/planner.js?v=b7';
+import { readReceiptLines, parseReceiptLines } from './menu/planner.js?v=b8';
 
 let F = null;
 const S = () => F.S();
@@ -444,8 +444,7 @@ export const FEATURE_ACTIONS = {
   chkDel: (d) => {
     const obj = itemOf(d.coll, d.id);
     obj.items = obj.items.filter((x) => x.id !== d.iid);
-  },
-  printReport: () => { window.print(); return false; }
+  }
 };
 
 

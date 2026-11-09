@@ -395,6 +395,12 @@ function checksList(scope, items, checked, qty = {}) {
     const k = itemKey(i);
     const q = qty[k] ?? i.total;
     const done = !!checked[k];
+    if (i.unit === 'по вкусу') {
+      return `<div class="item-row"><label class="item ${done ? 'done' : ''}">
+      <input type="checkbox" data-mcheck="${esc(k)}" data-scope="${esc(scope)}" ${done ? 'checked' : ''}>
+      <span class="box">✓</span>
+      <span class="txt"><span class="nm">${esc(i.name)}</span><div class="qty">по вкусу</div></span></label></div>`;
+    }
     const pl = packLine(i, q);
     const hasPack = !!(M().packs || {})[packKeyOf(i.name)];
     return `<div class="item-row">
@@ -823,7 +829,11 @@ function act(b) {
   }
   else if (a === 'confirm-month') { confirmMonth(ym); ctx.toast('Месяц подтверждён, списки созданы'); TAB = 'shop'; }
   else if (a === 'refresh') { refreshMonth(ym); ctx.toast('Списки обновлены'); }
-  else if (a === 'unlock') { const err = unlockMonth(ym); ctx.toast(err || 'Месяц снова в черновике: можно редактировать'); }
+  else if (a === 'unlock') {
+    const bought = monthWeeks(ym).some((mon) => (M().weeks[mon] || {}).status === 'bought');
+    if (bought && !confirm('Есть отмеченные закупки. Они останутся в «Финансах», и при новой закупке расходы задвоятся. Вернуть месяц в черновик?')) return;
+    const err = unlockMonth(ym); ctx.toast(err || 'Месяц снова в черновике: можно редактировать');
+  }
   else if (a === 'buy-week') { openPurchase({ kind: 'week', mon: b.dataset.mon, label: weekLabel(b.dataset.mon) }); return; }
   else if (a === 'buy-long') { openPurchase({ kind: 'long', ym, label: `запас на ${monthTitle(ym)}` }); return; }
   else if (a === 'dish-new') { openDishForm(null); return; }
