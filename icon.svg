@@ -1,5 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#2f5d50"/>
-  <path d="M112 236 256 120l144 116v156a20 20 0 0 1-20 20H132a20 20 0 0 1-20-20z" fill="none" stroke="#ffffff" stroke-width="30" stroke-linejoin="round"/>
-  <path d="M190 300l46 46 90-96" fill="none" stroke="#e8c15a" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#3f7b68"/>
+      <stop offset="1" stop-color="#21463c"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#f6d88e" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#f6d88e" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <circle cx="392" cy="128" r="150" fill="url(#sun)"/>
+  <!-- труба и дым -->
+  <rect x="318" y="118" width="36" height="78" rx="6" fill="#fbf6ec"/>
+  <path d="M332 104c-14-16 10-24 0-44" fill="none" stroke="#fbf6ec" stroke-opacity="0.6" stroke-width="10" stroke-linecap="round"/>
+  <!-- дом -->
+  <path d="M126 252 256 140l130 112v132c0 12-10 22-22 22H148c-12 0-22-10-22-22z" fill="#fbf6ec"/>
+  <path d="M112 262 256 136l144 126" fill="none" stroke="#e7a04b" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- окно с тёплым светом -->
+  <rect x="150" y="280" width="56" height="56" rx="12" fill="#f2c46d"/>
+  <path d="M178 280v56M150 308h56" stroke="#fbf6ec" stroke-width="7"/>
+  <!-- дверь -->
+  <path d="M226 406V338c0-16 13-29 29-29s29 13 29 29v68z" fill="#b5533c"/>
+  <circle cx="276" cy="374" r="5" fill="#f6d88e"/>
+  <!-- значок ассистента: галочка в круге -->
+  <circle cx="386" cy="392" r="54" fill="#e8c15a"/>
+  <path d="M364 392l16 17 32-36" fill="none" stroke="#21463c" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
