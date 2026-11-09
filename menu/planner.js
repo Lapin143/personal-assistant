@@ -15,7 +15,7 @@ const LONG_CATS = ['grain', 'pantry'];
 const isLong = (cat) => LONG_CATS.includes(cat);
 const DAYS_RU = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 const MONTHS_RU = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
-const TYPE_RU = { breakfast: 'Завтрак', lunch: 'Обед', soup: 'Суп', dinner: 'Ужин' };
+const TYPE_RU = { breakfast: 'Завтрак', lunch: 'Обед', dinner: 'Ужин' };
 
 let ctx = null;
 let TAB = 'plan';
@@ -83,7 +83,7 @@ const M = () => ctx.S().menu;
 const dishes = () => M().dishes;
 const dishByName = (n) => dishes().find((d) => d.name === n);
 const dishesFor = (slot) => dishes().filter((d) => (slot === 'breakfast' ? d.type === 'breakfast'
-  : slot === 'dinner' ? d.type === 'dinner' : (d.type === 'lunch' || d.type === 'soup')));
+  : slot === 'dinner' ? d.type === 'dinner' : d.type === 'lunch'));
 const weekOf = (mon) => { M().weeks[mon] ||= { days: {}, status: 'draft' }; return M().weeks[mon]; };
 const monthRec = (ym) => { M().months ||= {}; M().months[ym] ||= { status: 'draft', long: null }; return M().months[ym]; };
 const monthConfirmed = (ym) => ((M().months || {})[ym] || {}).status === 'confirmed';
@@ -329,8 +329,7 @@ function dishOptions(slot, cur) {
 function lunchOptions(cur) {
   const o = (d) => `<option value="${esc(d.name)}" ${d.name === cur ? 'selected' : ''}>${esc(d.emoji ? d.emoji + ' ' : '')}${esc(d.name)}</option>`;
   return `<option value="">Не выбрано</option>
-    <optgroup label="Обеды">${dishes().filter((d) => d.type === 'lunch').map(o).join('')}</optgroup>
-    <optgroup label="Супы (на два дня)">${dishes().filter((d) => d.type === 'soup').map(o).join('')}</optgroup>`;
+    <optgroup label="Обеды">${dishes().filter((d) => d.type === 'lunch').map(o).join('')}</optgroup>`;
 }
 
 function dayRow(iso, locked) {
@@ -529,8 +528,8 @@ function statsHtml() {
 
 // ---------- вкладка «Блюда» ----------
 function libHtml() {
-  const types = ['all', 'breakfast', 'lunch', 'soup', 'dinner'];
-  const names = { all: 'Все', breakfast: 'Завтраки', lunch: 'Обеды', soup: 'Супы', dinner: 'Ужины' };
+  const types = ['all', 'breakfast', 'lunch', 'dinner'];
+  const names = { all: 'Все', breakfast: 'Завтраки', lunch: 'Обеды', dinner: 'Ужины' };
   const q = libQuery.trim().toLowerCase();
   const list = dishes().filter((d) => (libFilter === 'all' || d.type === libFilter) && (!q || d.name.toLowerCase().includes(q)));
   return `

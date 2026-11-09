@@ -1,7 +1,7 @@
-import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b8';
-import { featuresInit, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, extraReminders,
+import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b9';
+import { featuresInit, budgetSettingsHtml, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, extraReminders,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
-  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=b14';
+  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=b15';
 import { pullRemote, queuePush, authEnabled, signIn, signOutLocal, validToken, getSession } from './sync.js?v=b3';
 import { iso, todayIso, addDays, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js';
 
@@ -389,6 +389,7 @@ function viewPeople() {
       <div class="pill-row"><button class="btn soft" data-act="logout">Выйти</button></div></div>
 
     <div class="sub-title">Финансы</div>
+    ${budgetSettingsHtml()}
     <div class="card"><div class="row" style="justify-content:space-between"><div class="setting-title">Счета</div>
       <button class="btn soft" data-act="addAcc">+ Счёт</button></div>
       ${S.accounts.map((a) => `<div class="li"><div class="main"><div class="t">${esc(a.name)}</div>
@@ -768,6 +769,8 @@ async function init() {
       S.menu.dishes = [...(S.menu.dishes || []), ...base.menu.dishes.filter((d) => !have.has(d.name))];
       S.menu.seedVersion = base.menu.seedVersion;
     }
+    // Супы больше не отдельный тип: это обед.
+    for (const d of S.menu.dishes || []) if (d.type === 'soup') d.type = 'lunch';
     featuresInit({
       S: () => S, me: () => ME, esc, money, uid, todayIso, toast, svg, personOpts, personName,
       save, render: () => { save(); render(); }, openForm, openModal: plannerCtx.openModal, closeModal,

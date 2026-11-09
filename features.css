@@ -62,3 +62,13 @@
 [data-theme="dark"] .lg.inc,[data-theme="dark"] .yb.inc{background:#6aa592}
 [data-theme="dark"] .lg.exp,[data-theme="dark"] .yb.exp{background:#e08a63}
 .report{margin-top:8px}
+.bud-tiles{margin-bottom:12px}
+.bud-tiles .stat .val{font-size:20px}
+.bm-track{display:flex;height:18px;border-radius:999px;background:var(--chip);overflow:hidden}
+.bm-spent{background:#b5533c;height:100%}
+.bm-plan{background:repeating-linear-gradient(45deg,#e7a48f 0 6px,#f3c9bb 6px 12px);height:100%}
+.lg.bm-spent-c{background:#b5533c}
+.lg.bm-plan-c{background:repeating-linear-gradient(45deg,#e7a48f 0 4px,#f3c9bb 4px 8px)}
+.bm-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--sub);margin-top:8px}
+.lim-row{display:grid;grid-template-columns:1fr 130px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--row-line)}
+.lim-row input{width:100%;padding:8px;border-radius:10px;border:1px solid var(--row-line);background:var(--surface);color:inherit;font:inherit;text-align:right}

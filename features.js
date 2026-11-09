@@ -2,7 +2,7 @@
 // чеки (PDF, CSV, TXT, фото), голосовой ввод, списки, идеи и поездки, подарки, шаги, лента и отчёт.
 // Модуль не знает о DOM приложения напрямую: всё нужное передаётся через featuresInit(ctx).
 import { upcoming, addDays } from './core.js';
-import { readReceiptLines, parseReceiptLines } from './menu/planner.js?v=b8';
+import { readReceiptLines, parseReceiptLines } from './menu/planner.js?v=b9';
 
 let F = null;
 const S = () => F.S();
@@ -20,6 +20,13 @@ const MONTHS_SHORT = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн'
 const monthTitle = (ym) => { const [y, m] = ym.split('-').map(Number); return new Date(y, m - 1, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }); };
 const shiftYm = (ym, k) => { const [y, m] = ym.split('-').map(Number); const d = new Date(y, m - 1 + k, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
 const lastDay = (y, m) => new Date(y, m, 0).getDate();
+// Лимиты, которые действуют в месяце: последний набор, чья дата начала не позже этого месяца.
+function limitsFor(month) {
+  const plans = (S().budgetPlans || []).slice().sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
+  const act = plans.filter((p) => p.from <= month).pop();
+  return act ? { budgets: act.budgets || {}, allowances: act.allowances || {} } : { budgets: {}, allowances: {} };
+}
+const nextMonthYm = () => shiftYm(today().slice(0, 7), 1);
 const personOptsReal = () => S().people.map((p) => [p.id, p.name]);
 const catOpts = () => S().categories.expense.map((c) => [c, c]);
 const sumExp = (list) => list.filter((t) => t.type !== 'income').reduce((a, t) => a + (Number(t.amount) || 0), 0);
@@ -39,6 +46,11 @@ export function featuresInit(ctx) { F = ctx; }
 export function ensureData(s) {
   s.budgets ||= {};
   s.allowances ||= {};
+  // Лимиты с датой действия: новый набор применяется с месяца, указанного в from.
+  if (!s.budgetPlans) {
+    const hasLegacy = Object.keys(s.budgets).length || Object.keys(s.allowances).length;
+    s.budgetPlans = hasLegacy ? [{ from: '2000-01', budgets: { ...s.budgets }, allowances: { ...s.allowances } }] : [];
+  }
   s.lists ||= [];
   s.ideas ||= [];
   s.gifts ||= [];
@@ -150,38 +162,78 @@ export function finTabHtml(tab, month) {
 
 function budgetHtml(month) {
   const s = S();
-  const ops = visible().filter((o) => o.date.startsWith(month) && o.type !== 'income');
+  const L = limitsFor(month);
+  const ops = visible().filter((o) => o.date.startsWith(month));
+  const spent = sumExp(ops);
   const byCat = {};
-  for (const o of ops) byCat[o.category] = (byCat[o.category] || 0) + (Number(o.amount) || 0);
-  const cats = s.categories.expense.map((c) => {
-    const lim = Number(s.budgets[c]) || 0;
+  for (const o of ops) if (o.type !== 'income') byCat[o.category] = (byCat[o.category] || 0) + (Number(o.amount) || 0);
+  const unpaid = s.recurring.filter((r) => r.active && !s.confirmed[`${r.id}|${month}`]).reduce((a, r) => a + (Number(r.amount) || 0), 0);
+  const planned = spent + unpaid;
+  const limitTotal = Object.values(L.budgets).reduce((a, v) => a + (Number(v) || 0), 0);
+  const left = limitTotal - planned;
+  const incomePlan = s.incomes.filter((i) => i.active).reduce((a, i) => a + (Number(i.amount) || 0), 0);
+  const undistributed = incomePlan - limitTotal;
+  const base = Math.max(limitTotal, planned, 1);
+  const w = (v) => Math.max(0, Math.min(100, Math.round((v / base) * 100)));
+  const tiles = `<div class="grid-2 bud-tiles">
+      <div class="stat"><div class="lbl">Лимит на месяц</div><div class="val">${money(limitTotal)}</div></div>
+      <div class="stat"><div class="lbl">Запланировано трат</div><div class="val">${money(planned)}</div></div>
+      <div class="stat"><div class="lbl">Осталось лимита</div><div class="val ${left < 0 ? 'neg' : 'pos'}">${money(left)}</div></div>
+      <div class="stat"><div class="lbl">Не распределено</div><div class="val">${incomePlan ? money(undistributed) : '—'}</div></div></div>`;
+  const meter = `<div class="bm-track" role="img" aria-label="Потрачено ${money(spent)}, запланировано ещё ${money(unpaid)}">
+      <div class="bm-spent" style="width:${w(spent)}%"></div><div class="bm-plan" style="width:${w(unpaid)}%"></div></div>
+    <div class="bm-legend"><span><i class="lg bm-spent-c"></i>Потрачено ${money(spent)}</span><span><i class="lg bm-plan-c"></i>Ещё запланировано ${money(unpaid)}</span></div>
+    <p class="note" style="margin:6px 0 0">${!incomePlan ? 'Добавьте регулярные поступления, чтобы видеть нераспределённую сумму.' : undistributed < 0 ? 'Лимиты больше плана доходов на ' + money(-undistributed) + '.' : 'Доход по плану больше лимитов: это нераспределённая сумма.'}</p>`;
+  const cats = s.categories.expense.filter((c) => (Number(L.budgets[c]) || 0) > 0 || byCat[c]).map((c) => {
+    const lim = Number(L.budgets[c]) || 0;
     const sp = byCat[c] || 0;
     const pct = lim ? Math.round((sp / lim) * 100) : 0;
     const cls = pct >= 100 ? 'over' : pct >= 80 ? 'warn' : '';
     return `<div class="bud-row">
       <div class="row" style="justify-content:space-between"><span class="t">${esc(c)}</span>
-        <span class="note">${money(sp)}${lim ? ' из ' + money(lim) : ''}</span></div>
-      ${lim ? `<div class="bar ${cls}"><div style="width:${Math.min(100, pct)}%"></div></div>` : ''}
-      <input data-bud="${esc(c)}" inputmode="decimal" placeholder="Лимит, ₽ (пусто — без лимита)" value="${lim || ''}" aria-label="Лимит: ${esc(c)}"></div>`;
+        <span class="note">${money(sp)}${lim ? ' из ' + money(lim) : ' · без лимита'}</span></div>
+      ${lim ? `<div class="bar ${cls}"><div style="width:${Math.min(100, pct)}%"></div></div>` : ''}</div>`;
   }).join('');
   const people = s.people.map((p) => {
     const sp = visible().filter((o) => o.type !== 'income' && o.personId === p.id && o.date.startsWith(month))
       .reduce((a, o) => a + (Number(o.amount) || 0), 0);
-    const lim = Number(s.allowances[p.id]) || 0;
-    const pct = lim ? Math.round((sp / lim) * 100) : 0;
+    const lim = Number(L.allowances[p.id]) || 0;
+    if (!lim) return '';
+    const pct = Math.round((sp / lim) * 100);
     const cls = pct >= 100 ? 'over' : pct >= 80 ? 'warn' : '';
     return `<div class="bud-row">
       <div class="row" style="justify-content:space-between"><span class="t">${esc(p.name)}</span>
-        <span class="note">${money(sp)}${lim ? ' из ' + money(lim) : ''}</span></div>
-      ${lim ? `<div class="bar ${cls}"><div style="width:${Math.min(100, pct)}%"></div></div>` : ''}
-      <input data-alw="${p.id}" inputmode="decimal" placeholder="Личный лимит, ₽" value="${lim || ''}" aria-label="Личный лимит: ${esc(p.name)}"></div>`;
+        <span class="note">${money(sp)} из ${money(lim)}</span></div>
+      <div class="bar ${cls}"><div style="width:${Math.min(100, pct)}%"></div></div></div>`;
   }).join('');
-  return `<div class="card"><div class="row" style="justify-content:space-between">
-      <div class="setting-title" style="margin:0">Лимиты по категориям</div>
-      <button class="btn" data-act="saveBudgets">Сохранить</button></div>
-      <p class="setting-desc">Жёлтый — от 80% лимита, красный — лимит исчерпан. Пустое поле — без лимита.</p>${cats}</div>
-    <div class="card"><div class="setting-title">Личные лимиты</div>
-      <p class="setting-desc">Считаются только ваши и общие траты. Личные операции партнёра в расчёт не входят.</p>${people}</div>`;
+  return `<div class="card"><div class="setting-title">Бюджет на ${monthTitle(month)}</div>
+      ${tiles}
+      <div class="sub-title">Расходы месяца</div>${meter}</div>
+    <div class="card"><div class="setting-title">Категории</div>
+      <p class="setting-desc">Жёлтый — от 80% лимита, красный — лимит исчерпан. Лимиты меняются в «Настройки → Финансы».</p>
+      ${cats || '<div class="empty">Лимитов пока нет. Задайте их в настройках.</div>'}</div>
+    ${people ? `<div class="card"><div class="setting-title">Личные лимиты</div>
+      <p class="setting-desc">Считаются только ваши и общие траты. Личные операции партнёра в расчёт не входят.</p>${people}</div>` : ''}`;
+}
+
+// Настройки → Финансы: лимиты. Новые значения действуют с следующего месяца.
+export function budgetSettingsHtml() {
+  const s = S();
+  const cur = limitsFor(today().slice(0, 7));
+  const pend = (s.budgetPlans || []).find((p) => p.from === nextMonthYm());
+  const B = pend ? pend.budgets : cur.budgets;
+  const A = pend ? pend.allowances : cur.allowances;
+  const rows = s.categories.expense.map((c) => `<div class="lim-row"><span>${esc(c)}</span>
+      <input data-bud="${esc(c)}" inputmode="decimal" placeholder="без лимита" value="${Number(B[c]) || ''}" aria-label="Лимит: ${esc(c)}"></div>`).join('');
+  const people = s.people.map((p) => `<div class="lim-row"><span>${esc(p.name)}</span>
+      <input data-alw="${p.id}" inputmode="decimal" placeholder="без лимита" value="${Number(A[p.id]) || ''}" aria-label="Личный лимит: ${esc(p.name)}"></div>`).join('');
+  return `<div class="card">
+      <div class="row" style="justify-content:space-between"><div class="setting-title" style="margin:0">Лимиты</div>
+        <button class="btn" data-act="saveBudgets">Сохранить</button></div>
+      <p class="setting-desc">Новые лимиты применятся с ${esc(monthTitle(nextMonthYm()))}. Текущий месяц не меняется.${pend ? ' Уже запланированы на следующий месяц: ' + esc(monthTitle(nextMonthYm())) + '.' : ''}</p>
+      <div class="sub-title">По категориям, ₽ в месяц</div>${rows}
+      ${people ? `<div class="sub-title">Личные, ₽ в месяц</div>${people}` : ''}
+    </div>`;
 }
 
 function barRows(rows, max) {
@@ -252,7 +304,7 @@ function reportHtml(period) {
       <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(expense)}</div></div></div>
     <div class="sub-title">Категории</div>
     ${cats.length ? cats.map(([c, v]) => {
-      const lim = Number(s.budgets[c]) || 0;
+      const lim = Number(limitsFor(period.length === 7 ? period : today().slice(0, 7)).budgets[c]) || 0;
       return `<div class="cat-row"><span>${esc(c)}</span><span>${expense ? Math.round((v / expense) * 100) : 0}%${lim ? ' · лимит ' + money(lim) : ''}</span><span>${money(v)}</span></div>`;
     }).join('') : '<div class="empty">Расходов нет</div>'}
     <div class="sub-title">Закупки по меню</div>
@@ -411,15 +463,20 @@ const itemOf = (coll, id) => S()[coll].find((x) => x.id === id);
 export const FEATURE_ACTIONS = {
   saveBudgets: () => {
     const s = S();
+    const budgets = {};
     document.querySelectorAll('[data-bud]').forEach((i) => {
       const v = parseFloat(String(i.value).replace(',', '.'));
-      if (v > 0) s.budgets[i.dataset.bud] = v; else delete s.budgets[i.dataset.bud];
+      if (v > 0) budgets[i.dataset.bud] = v;
     });
+    const allowances = {};
     document.querySelectorAll('[data-alw]').forEach((i) => {
       const v = parseFloat(String(i.value).replace(',', '.'));
-      if (v > 0) s.allowances[i.dataset.alw] = v; else delete s.allowances[i.dataset.alw];
+      if (v > 0) allowances[i.dataset.alw] = v;
     });
-    F.toast('Лимиты сохранены');
+    const from = nextMonthYm();
+    s.budgetPlans = (s.budgetPlans || []).filter((p) => p.from !== from);
+    s.budgetPlans.push({ from, budgets, allowances });
+    F.toast(`Лимиты сохранены, действуют с ${monthTitle(from)}`);
   },
   cushionTopUp: () => {
     F.openForm('Подушка: пополнить', [{ k: 'amt', t: 'number', l: 'Сумма' }], (o) => {
