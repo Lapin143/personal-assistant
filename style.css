@@ -126,7 +126,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #bfd8cf; border-c
 label.field { display: block; font-size: 13px; color: var(--muted); font-weight: 600; }
 
 .chip {
-  display: inline-block; font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 999px;
+  display: inline-block; font-size: 12px; font-weight: 700; padding: 4px 9px; border-radius: 999px;
   text-transform: uppercase; letter-spacing: .05em;
 }
 .chip.breakfast { background: #fbeed8; color: #9a6510; }
@@ -142,7 +142,7 @@ label.field { display: block; font-size: 13px; color: var(--muted); font-weight:
 .day-nav .label { text-align: center; }
 .day-nav .label strong { display: block; font-size: 16px; }
 .day-nav .label .muted { text-transform: capitalize; }
-.today-pill { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 700; color: #fff; background: var(--terra); padding: 2px 8px; border-radius: 999px; vertical-align: middle; }
+.today-pill { display: inline-block; margin-left: 6px; font-size: 12px; font-weight: 700; color: #fff; background: var(--terra); padding: 2px 8px; border-radius: 999px; vertical-align: middle; }
 
 .meal {
   position: relative; background: var(--card); border-radius: var(--radius);
@@ -192,7 +192,7 @@ details.recipe b { color: #3b4742; }
 .tile .e { font-size: 26px; }
 .tile .n { font-weight: 700; font-size: 14px; line-height: 1.25; }
 .tile.current { border-color: var(--green); }
-.tile .now { font-size: 11px; color: var(--green); font-weight: 700; }
+.tile .now { font-size: 12px; color: var(--green); font-weight: 700; }
 
 /* ---------- вкладка «Блюда» ---------- */
 .search { position: relative; margin-bottom: 10px; }
@@ -227,7 +227,7 @@ details.recipe b { color: #3b4742; }
 .shop-summary .progress-bar { background: var(--green); }
 .shop-card { background: var(--card); border-radius: var(--radius); padding: 6px 16px 10px; box-shadow: var(--shadow); margin-bottom: 12px; }
 .shop-card h3 { margin: 12px 0 2px; font-size: 16px; }
-.group-title { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--green-2); font-weight: 800; margin: 12px 0 2px; }
+.group-title { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--green-2); font-weight: 800; margin: 12px 0 2px; }
 .item {
   display: flex; gap: 12px; align-items: center; padding: 11px 0; border-bottom: 1px solid #f1eee7; cursor: pointer;
 }
@@ -314,17 +314,17 @@ details.recipe b { color: #3b4742; }
 .form .chk input { width: auto; margin: 0; }
 .muted-block { font-size: 13px; color: var(--muted); margin: 6px 0 10px; }
 .sub-title { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--green-2); font-weight: 800; margin: 16px 2px 6px; }
-.badge-private { font-size: 11px; background: #efe9dd; color: #7a6a4a; padding: 2px 7px; border-radius: 999px; margin-left: 6px; font-weight: 700; }
+.badge-private { font-size: 12px; background: #efe9dd; color: #7a6a4a; padding: 2px 7px; border-radius: 999px; margin-left: 6px; font-weight: 700; }
 .pill-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .pill-row .btn { padding: 7px 12px; font-size: 13px; }
 .note { font-size: 12px; color: var(--muted); }
 .warn-box { background: #fdf3e6; color: #7a4d10; border-radius: 14px; padding: 12px 14px; font-size: 13px; margin-bottom: 12px; }
 
 .bell { position: relative; cursor: pointer; font-size: 22px; border: 0; }
-.bell-count { position: absolute; top: -4px; right: -6px; background: #a13a2b; color: #fff; font-size: 11px; font-weight: 800; border-radius: 999px; padding: 1px 6px; min-width: 18px; text-align: center; }
+.bell-count { position: absolute; top: -4px; right: -6px; background: #a13a2b; color: #fff; font-size: 12px; font-weight: 800; border-radius: 999px; padding: 1px 6px; min-width: 18px; text-align: center; }
 .bell-count[hidden] { display: none; }
 .li.unread { background: var(--unread); border-radius: 12px; }
-.new-pill { font-size: 11px; background: var(--green); color: #fff; padding: 2px 7px; border-radius: 999px; margin-left: 6px; font-weight: 700; }
+.new-pill { font-size: 12px; background: var(--green); color: #fff; padding: 2px 7px; border-radius: 999px; margin-left: 6px; font-weight: 700; }
 .hero-actions { display: flex; gap: 8px; }
 .sections button .ico { margin-right: 4px; font-size: 15px; }
 
@@ -339,7 +339,7 @@ details.recipe b { color: #3b4742; }
 .sections button {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
   min-height: 52px; padding: 6px 2px; border: 0; border-radius: 14px; background: transparent;
-  color: var(--sub); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer;
+  color: var(--sub); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
 }
 .sections button.active { background: transparent; color: var(--green); }
 .sections button.active svg { stroke-width: 2.2; }
@@ -373,3 +373,14 @@ details.recipe b { color: #3b4742; }
 
 /* Белый текст на зелёной кнопке остаётся белым в обеих темах. */
 .hero-badge, .hero-badge svg { color: #fff; }
+
+/* Доступность (WCAG 2.1 AA): контраст текста и размеры касания */
+:root { --muted: #666f6b; --green-2: #386a5c; --done: #6b736f; }
+[data-theme="dark"] { --done: #8a948f; }
+/* Чекбоксы не растягиваются на всю строку и не сжимают название */
+input[type="checkbox"] { width: auto; flex: 0 0 auto; }
+/* Область касания не меньше 44 px */
+.btn, .tabline button, .pl-toggle { min-height: 44px; }
+.icon-btn { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+/* Белый текст на плашке «сегодня» с достаточным контрастом */
+.today-pill { background: #b5533c; }

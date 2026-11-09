@@ -7,7 +7,7 @@
 .pl-day{background:var(--surface);border:1px solid var(--row-line);border-radius:14px;padding:12px;margin-bottom:10px}
 .pl-day.is-today{border-color:#2f5d50;box-shadow:0 0 0 2px rgba(47,93,80,.15)}
 .pl-day-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
-.today-pill{font-size:11px;background:#2f5d50;color:#fff;border-radius:999px;padding:2px 8px}
+.today-pill{font-size: 12px;background:#2f5d50;color:#fff;border-radius:999px;padding:2px 8px}
 .pl-slot{display:flex;flex-direction:column;gap:4px;margin-top:8px;font-size:13px}
 .pl-slot > span{color:var(--sub);font-weight:600}
 .pl-slot select{width:100%;padding:10px;border-radius:10px;border:1px solid var(--row-line);background:var(--surface);color:inherit;font:inherit}
