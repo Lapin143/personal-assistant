@@ -1,9 +1,5 @@
-// Планировщик меню на календарную неделю.
-// Данные лежат в S.menu: dishes (библиотека с ингредиентами), weeks (планы по понедельникам),
-// purchases (закупки с чеками). Всё сохраняется вместе с остальными данными семьи.
-//
-// Граммовки: у каждого блюда два значения на ингредиент — a для меньшей порции, b для большей.
-// На приём пищи уходит a + b. Супы — на два дня: в каждый обед уже заложена половина батча.
+// Планировщик меню: месяц вперёд, недели, списки покупок (запас на месяц и недельные), закупки, статистика, блюда.
+// Данные: S.menu.dishes, S.menu.weeks[понедельник].days[дата], S.menu.months[YYYY-MM], S.menu.purchases.
 
 const MEALS = [['breakfast', 'Завтрак'], ['lunch', 'Обед'], ['dinner', 'Ужин']];
 const CATS = {
@@ -14,49 +10,53 @@ const CAT_COLOR = {
   meat: '#b5533c', dairy: '#e0a044', veg: '#4c8474', grain: '#c8a46a',
   bakery: '#9a7b5b', pantry: '#7a7fa6', other: '#8a8a8a', unsplit: '#c9c9c9'
 };
+// Товары длительного хранения покупаем один раз на месяц; остальное — еженедельно.
+const LONG_CATS = ['grain', 'pantry'];
+const isLong = (cat) => LONG_CATS.includes(cat);
 const DAYS_RU = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 const MONTHS_RU = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
-const STATUS_RU = { draft: 'Черновик', confirmed: 'Подтверждено', bought: 'Куплено' };
 const TYPE_RU = { breakfast: 'Завтрак', lunch: 'Обед', soup: 'Суп', dinner: 'Ужин' };
 
 let ctx = null;
-let TAB = 'week';
-let weekStart = null;
-let statsMonth = null;
+let TAB = 'plan';
+let monthSel = '';
+let statsMonth = '';
 let libFilter = 'all';
 let libQuery = '';
 let purchaseMode = 'sum';
 let purchaseParsed = null;
-
-export function plannerInit(context) {
-  ctx = context;
-  weekStart = mondayOf(ctx.todayIso());
-  statsMonth = ctx.todayIso().slice(0, 7);
-}
+let PURCHASE = null;
 
 // ---------- даты ----------
+const pad = (n) => String(n).padStart(2, '0');
 const toDate = (iso) => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d); };
-const toIso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const toIso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const addDays = (iso, n) => { const d = toDate(iso); d.setDate(d.getDate() + n); return toIso(d); };
 const mondayOf = (iso) => addDays(iso, -((toDate(iso).getDay() + 6) % 7));
 const weekDays = (mon) => Array.from({ length: 7 }, (_, i) => addDays(mon, i));
-const dayLabel = (iso) => { const d = toDate(iso); return `${DAYS_RU[d.getDay()]}, ${d.getDate()} ${MONTHS_RU[d.getMonth()]}`; };
-const weekLabel = (mon) => {
-  const a = toDate(mon); const b = toDate(addDays(mon, 6));
-  return `${a.getDate()} ${MONTHS_RU[a.getMonth()]} – ${b.getDate()} ${MONTHS_RU[b.getMonth()]}`;
+const lastDayOf = (ym) => { const [y, m] = ym.split('-').map(Number); return new Date(y, m, 0).getDate(); };
+const monthDays = (ym) => Array.from({ length: lastDayOf(ym) }, (_, i) => `${ym}-${pad(i + 1)}`);
+const monthWeeks = (ym) => {
+  const out = [];
+  let mon = mondayOf(`${ym}-01`);
+  const end = `${ym}-${pad(lastDayOf(ym))}`;
+  while (mon <= end) { out.push(mon); mon = addDays(mon, 7); }
+  return out;
 };
-const monthLabel = (ym) => { const [y, m] = ym.split('-').map(Number); return `${new Date(y, m - 1, 1).toLocaleDateString('ru-RU', { month: 'long' })} ${y}`; };
-const shiftMonth = (ym, k) => { const [y, m] = ym.split('-').map(Number); const d = new Date(y, m - 1 + k, 1); return toIso(d).slice(0, 7); };
+const weekDaysIn = (mon, ym) => weekDays(mon).filter((d) => d.startsWith(ym));
+const shiftMonth = (ym, k) => { const [y, m] = ym.split('-').map(Number); const d = new Date(y, m - 1 + k, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
+const monthTitle = (ym) => { const [y, m] = ym.split('-').map(Number); return new Date(y, m - 1, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }); };
+const dayLabel = (iso) => { const d = toDate(iso); return `${DAYS_RU[d.getDay()]}, ${d.getDate()} ${MONTHS_RU[d.getMonth()]}`; };
+const weekLabel = (mon) => { const a = toDate(mon); const b = toDate(addDays(mon, 6)); return `${a.getDate()} ${MONTHS_RU[a.getMonth()]} – ${b.getDate()} ${MONTHS_RU[b.getMonth()]}`; };
 const esc = (s) => ctx.esc(s);
 const money = (n) => ctx.money(n);
 
 // ---------- количества ----------
 function fmtQty(v, unit) {
-  if (!v) return unit === 'по вкусу' ? 'по вкусу' : '';
+  if (!v) return '';
   if (unit === 'г' && v >= 1000) return `${String((v / 1000).toFixed(2)).replace(/\.?0+$/, '').replace('.', ',')} кг`;
   if (unit === 'мл' && v >= 1000) return `${String((v / 1000).toFixed(2)).replace(/\.?0+$/, '').replace('.', ',')} л`;
-  const r = Math.round(v * 10) / 10;
-  return `${String(r).replace('.', ',')} ${unit}`;
+  return `${String(Math.round(v * 10) / 10).replace('.', ',')} ${unit}`;
 }
 const itemKey = (i) => `${i.name.toLowerCase()}|${i.unit}`;
 
@@ -66,33 +66,33 @@ const dishes = () => M().dishes;
 const dishByName = (n) => dishes().find((d) => d.name === n);
 const dishesFor = (slot) => dishes().filter((d) => (slot === 'breakfast' ? d.type === 'breakfast'
   : slot === 'dinner' ? d.type === 'dinner' : (d.type === 'lunch' || d.type === 'soup')));
-const weekOf = (mon) => { M().weeks[mon] = M().weeks[mon] || { days: {}, status: 'draft' }; return M().weeks[mon]; };
-const slotOf = (mon, iso, slot) => (((M().weeks[mon] || {}).days || {})[iso] || {})[slot] || '';
-const lunchOn = (mon, iso) => { const d = ((M().weeks[mon] || {}).days || {})[iso] || {}; return d.lunchOn !== false; };
+const weekOf = (mon) => { M().weeks[mon] ||= { days: {}, status: 'draft' }; return M().weeks[mon]; };
+const monthRec = (ym) => { M().months ||= {}; M().months[ym] ||= { status: 'draft', long: null }; return M().months[ym]; };
+const monthConfirmed = (ym) => ((M().months || {})[ym] || {}).status === 'confirmed';
+const dayOf = (iso) => (((M().weeks[mondayOf(iso)] || {}).days || {})[iso]) || {};
+const on = (day, slot) => day[slot + 'On'] !== false;
 
-function setSlot(mon, iso, slot, value) {
+function setDay(iso, patch) {
+  const mon = mondayOf(iso);
   const w = weekOf(mon);
-  w.days[iso] = w.days[iso] || {};
-  w.days[iso][slot] = value || '';
-  if (w.status !== 'draft') w.listDirty = true;
+  w.days[iso] = { ...(w.days[iso] || {}), ...patch };
+  const m = (M().months || {})[iso.slice(0, 7)];
+  if (m && m.status === 'confirmed') m.dirty = true;
 }
 
-// Сводка продуктов на неделю: сумма a + b по каждому ингредиенту.
-function aggregate(mon) {
-  const w = M().weeks[mon];
-  if (!w) return [];
+// Сумма продуктов по дням: a + b на приём; штучные продукты округляются вверх на каждый приём.
+function aggregate(days, keep = () => true) {
   const map = new Map();
-  for (const iso of weekDays(mon)) {
-    const day = w.days[iso] || {};
+  for (const iso of days) {
+    const day = dayOf(iso);
     for (const [slot] of MEALS) {
-      if (slot === 'lunch' && day.lunchOn === false) continue;
+      if (!on(day, slot) || !day[slot]) continue;
       const d = dishByName(day[slot]);
       if (!d) continue;
       for (const ing of d.ingredients) {
-        const key = `${ing.name.toLowerCase()}|${ing.unit}`;
+        if (!keep(ing.cat)) continue;
+        const key = itemKey(ing);
         const cur = map.get(key) || { name: ing.name, unit: ing.unit, cat: ing.cat, total: 0 };
-        // Штучные продукты не делятся между приёмами пищи: остаток на следующий день не сохраняем.
-        // Половинки внутри одного приёма (каждому по половинке) округляются до целой штуки.
         const need = (ing.a || 0) + (ing.b || 0);
         cur.total += ing.unit === 'шт' ? Math.ceil(need - 1e-9) : need;
         map.set(key, cur);
@@ -105,18 +105,95 @@ function aggregate(mon) {
     .sort((a, b) => (order.indexOf(a.cat) - order.indexOf(b.cat)) || a.name.localeCompare(b.name, 'ru'));
 }
 
-function mealsCount(mon) {
-  const w = M().weeks[mon];
-  if (!w) return 0;
+function mealsCount(ym) {
   let n = 0;
-  for (const iso of weekDays(mon)) for (const [slot] of MEALS) {
-    if (slot === 'lunch' && (w.days[iso] || {}).lunchOn === false) continue;
-    if ((w.days[iso] || {})[slot]) n++;
-  }
+  for (const iso of monthDays(ym)) { const d = dayOf(iso); for (const [slot] of MEALS) if (on(d, slot) && d[slot]) n++; }
+  return n;
+}
+function slotsCount(ym) {
+  let n = 0;
+  for (const iso of monthDays(ym)) { const d = dayOf(iso); for (const [slot] of MEALS) if (on(d, slot)) n++; }
   return n;
 }
 
-// ---------- разбор чеков ----------
+// Заполняет только пустые приёмы, которые отмечены как «едим дома».
+function fillEmpty(ym) {
+  let filled = 0;
+  for (const iso of monthDays(ym)) {
+    const w = weekOf(mondayOf(iso));
+    const cur = { ...(w.days[iso] || {}) };
+    for (const [slot] of MEALS) {
+      if (!on(cur, slot) || cur[slot]) continue;
+      const pool = dishesFor(slot);
+      if (!pool.length) continue;
+      cur[slot] = pool[Math.floor(Math.random() * pool.length)].name;
+      filled++;
+    }
+    w.days[iso] = cur;
+  }
+  return filled;
+}
+
+// Недельный список: только дни подтверждённых месяцев, без товаров длительного хранения.
+function weeklyItems(mon) {
+  return aggregate(weekDays(mon).filter((d) => monthConfirmed(d.slice(0, 7))), (c) => !isLong(c));
+}
+const keptChecks = (oldChecked, items) => Object.fromEntries(Object.keys(oldChecked || {})
+  .filter((k) => items.some((i) => itemKey(i) === k)).map((k) => [k, true]));
+
+function confirmMonth(ym) {
+  const m = monthRec(ym);
+  m.status = 'confirmed';
+  m.dirty = false;
+  m.longBought = false;
+  m.long = { items: aggregate(monthDays(ym), isLong), checked: {} };
+  for (const mon of monthWeeks(ym)) {
+    const w = weekOf(mon);
+    if (w.status === 'bought') continue;
+    w.status = 'confirmed';
+    w.listDirty = false;
+    w.list = weeklyItems(mon);
+    w.checked = {};
+  }
+}
+
+function refreshMonth(ym) {
+  const m = monthRec(ym);
+  if (m.status !== 'confirmed') return;
+  const longItems = aggregate(monthDays(ym), isLong);
+  m.long = { items: longItems, checked: keptChecks((m.long || {}).checked, longItems) };
+  m.dirty = false;
+  for (const mon of monthWeeks(ym)) {
+    const w = weekOf(mon);
+    if (w.status === 'bought') continue;
+    const items = weeklyItems(mon);
+    w.list = items;
+    w.checked = keptChecks(w.checked, items);
+    w.listDirty = false;
+  }
+}
+
+function unlockMonth(ym) {
+  const m = monthRec(ym);
+  const weeks = monthWeeks(ym);
+  if (m.longBought || weeks.some((mon) => (M().weeks[mon] || {}).status === 'bought')) {
+    return 'Нельзя вернуть в черновик: закупка уже сделана';
+  }
+  m.status = 'draft';
+  m.dirty = false;
+  delete m.long;
+  for (const mon of weeks) {
+    const w = M().weeks[mon];
+    if (!w || w.status !== 'confirmed') continue;
+    if (weekDays(mon).some((d) => monthConfirmed(d.slice(0, 7)))) { w.list = weeklyItems(mon); continue; }
+    w.status = 'draft';
+    delete w.list;
+    delete w.checked;
+  }
+  return null;
+}
+
+// ---------- разбор чеков (PDF, CSV, TXT, фото) ----------
 const KW = [
   ['meat', /кур|говяд|свинин|фарш|мяс|рыб|форел|треск|лосос|филе|индейк|колбас|сосиск|горбуш/i],
   ['dairy', /молок|творог|сыр|йогурт|кефир|сметан|масл|яйц|сливк|ряжен|ряженк/i],
@@ -127,7 +204,6 @@ const KW = [
 ];
 const guessCat = (name) => (KW.find(([, re]) => re.test(name)) || [null])[0] || 'other';
 
-// Строки чека: последнее число с двумя знаками после запятой — цена позиции.
 export function parseReceiptLines(lines) {
   const items = [];
   let foundTotal = null;
@@ -187,7 +263,7 @@ export async function readReceiptLines(file) {
   return (await file.text()).split(/\r?\n/);
 }
 
-// ---------- инфографика ----------
+// ---------- диаграммы ----------
 function donutSvg(byCat, total) {
   const entries = Object.entries(byCat).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
   const r = 46;
@@ -223,92 +299,123 @@ function barsHtml(rows, max) {
     <span class="bar-val">${esc(money(r.value))}</span></div>`).join('');
 }
 
-// ---------- вкладка «Неделя» ----------
-function weekHtml() {
-  const mon = weekStart;
-  const w = weekOf(mon);
-  const today = ctx.todayIso();
-  const count = mealsCount(mon);
-  const dirty = w.status !== 'draft' && w.listDirty;
-  const days = weekDays(mon).map((iso) => {
-    const on = lunchOn(mon, iso);
-    const opt = (slot) => {
-      const cur = slotOf(mon, iso, slot);
-      if (slot !== 'lunch') {
-        return `<option value="">Не выбрано</option>` + dishesFor(slot).map((d) =>
-          `<option value="${esc(d.name)}" ${d.name === cur ? 'selected' : ''}>${esc(d.emoji ? d.emoji + ' ' : '')}${esc(d.name)}</option>`).join('');
-      }
-      const lunches = dishes().filter((d) => d.type === 'lunch');
-      const soups = dishes().filter((d) => d.type === 'soup');
-      const o = (d) => `<option value="${esc(d.name)}" ${d.name === cur ? 'selected' : ''}>${esc(d.emoji ? d.emoji + ' ' : '')}${esc(d.name)}</option>`;
-      return `<option value="">Не выбрано</option>
-        <optgroup label="Обеды">${lunches.map(o).join('')}</optgroup>
-        <optgroup label="Супы (на два дня)">${soups.map(o).join('')}</optgroup>`;
-    };
-    return `<div class="pl-day ${iso === today ? 'is-today' : ''}">
-      <div class="pl-day-head"><strong>${esc(dayLabel(iso))}</strong>${iso === today ? '<span class="today-pill">сегодня</span>' : ''}</div>
-      <label class="pl-slot"><span>Завтрак</span><select data-slot="breakfast" data-day="${iso}">${opt('breakfast')}</select></label>
-      <div class="pl-slot">
-        <label class="pl-toggle"><input type="checkbox" data-lunch-on="${iso}" ${on ? 'checked' : ''}> Обед</label>
-        ${on ? `<select data-slot="lunch" data-day="${iso}">${opt('lunch')}</select>` : '<span class="muted">без обеда</span>'}
-      </div>
-      <label class="pl-slot"><span>Ужин</span><select data-slot="dinner" data-day="${iso}">${opt('dinner')}</select></label>
-    </div>`;
+// ---------- вкладка «План» ----------
+function dishOptions(slot, cur) {
+  return `<option value="">Не выбрано</option>` + dishesFor(slot).map((d) =>
+    `<option value="${esc(d.name)}" ${d.name === cur ? 'selected' : ''}>${esc(d.emoji ? d.emoji + ' ' : '')}${esc(d.name)}</option>`).join('');
+}
+function lunchOptions(cur) {
+  const o = (d) => `<option value="${esc(d.name)}" ${d.name === cur ? 'selected' : ''}>${esc(d.emoji ? d.emoji + ' ' : '')}${esc(d.name)}</option>`;
+  return `<option value="">Не выбрано</option>
+    <optgroup label="Обеды">${dishes().filter((d) => d.type === 'lunch').map(o).join('')}</optgroup>
+    <optgroup label="Супы (на два дня)">${dishes().filter((d) => d.type === 'soup').map(o).join('')}</optgroup>`;
+}
+
+function dayRow(iso, locked) {
+  const day = dayOf(iso);
+  const slots = MEALS.map(([slot, title]) => {
+    const isOn = on(day, slot);
+    return `<div class="pl-slot">
+      <label class="pl-toggle"><input type="checkbox" data-on="${slot}" data-day="${iso}" ${isOn ? 'checked' : ''}> ${title}: едим дома</label>
+      ${isOn ? `<select data-slot="${slot}" data-day="${iso}">${slot === 'lunch' ? lunchOptions(day.lunch || '') : dishOptions(slot, day[slot] || '')}</select>`
+        : '<span class="muted">не едим дома, продукты не считаются</span>'}</div>`;
   }).join('');
+  return `<div class="pl-day ${iso === ctx.todayIso() ? 'is-today' : ''}">
+    <div class="pl-day-head"><strong>${esc(dayLabel(iso))}</strong>${iso === ctx.todayIso() ? '<span class="today-pill">сегодня</span>' : ''}</div>
+    ${slots}</div>`;
+}
 
-  const actions = w.status === 'bought'
-    ? `<p class="note">Закупка этой недели уже сохранена.</p>`
-    : w.status === 'confirmed'
-      ? `${dirty ? `<div class="warn-box">Меню изменили после подтверждения. Обновите список покупок.</div>
-         <button class="btn soft block" data-mact="refresh">Обновить список покупок</button>` : ''}`
-      : `<button class="btn block" data-mact="confirm" ${count ? '' : 'disabled'}>Подтвердить меню и создать список покупок</button>
-         <button class="btn soft block" data-mact="fill">Заполнить пустые случайно</button>`;
+function weekDetails(mon, ym) {
+  const w = M().weeks[mon] || {};
+  const days = weekDaysIn(mon, ym);
+  const filled = days.reduce((a, iso) => a + MEALS.filter(([s]) => on(dayOf(iso), s) && dayOf(iso)[s]).length, 0);
+  const slots = days.reduce((a, iso) => a + MEALS.filter(([s]) => on(dayOf(iso), s)).length, 0);
+  const open = weekDays(mon).includes(ctx.todayIso()) ? 'open' : '';
+  return `<details class="pl-week" ${open}>
+    <summary><span>Неделя ${esc(weekLabel(mon))}</span>
+      <span class="note">${filled} из ${slots}${w.status === 'bought' ? ' · куплено' : ''}</span></summary>
+    ${days.map((iso) => dayRow(iso, w.status === 'bought')).join('')}</details>`;
+}
 
-  return `
-    <div class="pl-week-nav">
-      <button class="icon-btn" data-mact="wk" data-d="-7" aria-label="Прошлая неделя">‹</button>
-      <div class="pl-week-title"><strong>${esc(weekLabel(mon))}</strong>
-        <span class="pill pill-${w.status}">${STATUS_RU[w.status]}</span></div>
-      <button class="icon-btn" data-mact="wk" data-d="7" aria-label="Следующая неделя">›</button>
-    </div>
-    <p class="muted" style="margin:0 0 10px">Выбрано приёмов пищи: ${count} из 21. Обед можно отключить отдельно.</p>
-    ${days}
+function planHtml() {
+  const ym = monthSel;
+  const m = monthRec(ym);
+  const weeks = monthWeeks(ym);
+  const filled = mealsCount(ym);
+  const slots = slotsCount(ym);
+  const bought = weeks.some((mon) => (M().weeks[mon] || {}).status === 'bought') || m.longBought;
+  const status = m.status === 'confirmed'
+    ? `<span class="pill pill-confirmed">Подтверждён</span>` : '<span class="pill pill-draft">Черновик</span>';
+  const actions = m.status === 'confirmed'
+    ? `${m.dirty ? `<div class="warn-box">Меню изменили после подтверждения. Обновите списки покупок.</div>
+         <button class="btn soft block" data-mact="refresh" data-ym="${ym}">Обновить списки</button>` : ''}
+       <p class="note">Месяц подтверждён: списки созданы во вкладке «Покупки».</p>
+       <button class="btn soft block" data-mact="unlock" data-ym="${ym}" ${bought ? 'disabled' : ''}>Вернуть в черновик</button>`
+    : `<button class="btn soft block" data-mact="fill" data-ym="${ym}">Заполнить пустые дни</button>
+       <button class="btn block" data-mact="confirm-month" data-ym="${ym}" ${filled ? '' : 'disabled'}>Подтвердить месяц и создать списки</button>
+       <p class="note">Автозаполнение берёт блюда из библиотеки. Снимите «едим дома» там, где не будете есть дома, и заполните только остальное.</p>`;
+  return `<div class="pl-week-nav">
+      <button class="icon-btn" data-mact="month" data-d="-1" aria-label="Предыдущий месяц">‹</button>
+      <div class="pl-week-title"><strong style="text-transform:capitalize">${esc(monthTitle(ym))}</strong>${status}</div>
+      <button class="icon-btn" data-mact="month" data-d="1" aria-label="Следующий месяц">›</button></div>
+    <p class="muted" style="margin:0 0 10px">Заполнено приёмов: ${filled} из ${slots}</p>
+    ${weeks.map((mon) => weekDetails(mon, ym)).join('')}
     <div class="pl-actions">${actions}</div>`;
 }
 
 // ---------- вкладка «Покупки» ----------
-function shopHtml() {
-  const w = M().weeks[weekStart] || { status: 'draft' };
-  if (w.status === 'draft' || !w.list) {
-    return `<div class="card empty">Сначала подтвердите меню на неделю во вкладке «Неделя». Тогда здесь появится список покупок.</div>`;
-  }
-  const checked = w.checked || {};
-  const done = w.list.filter((i) => checked[itemKey(i)]).length;
-  const pct = w.list.length ? Math.round((done / w.list.length) * 100) : 0;
-  const groups = {};
-  for (const i of w.list) (groups[i.cat] = groups[i.cat] || []).push(i);
-  const dirty = w.listDirty ? `<div class="warn-box">Меню изменилось после подтверждения. Обновите список, отметки сохранятся там, где продукты совпали.</div>` : '';
-  const purchase = w.status === 'bought'
-    ? `<div class="card"><div class="setting-title">Закупка сохранена</div><p class="note">Операция добавлена в «Финансы». Статистика — во вкладке «Статистика».</p></div>`
-    : `<button class="btn block" data-mact="buy" ${done ? '' : 'disabled'}>Закупка сделана</button>
-       ${done ? '' : '<p class="note" style="text-align:center">Отметьте купленное, чтобы сохранить закупку</p>'}`;
+function purchaseBtn(label, target) {
+  return `<button class="btn block" data-mact="${target.act}" ${target.attrs}>${label}</button>`;
+}
 
-  return `
-    ${dirty}
-    <div class="shop-summary">
-      <div class="row" style="justify-content:space-between"><div><div class="muted">Куплено</div><div class="big">${done} из ${w.list.length}</div></div>
-        ${w.status === 'confirmed' ? `<button class="btn soft" data-mact="refresh">Пересчитать</button>` : ''}</div>
-      <div class="bar"><div style="width:${pct}%"></div></div>
-    </div>
-    ${Object.keys(CATS).filter((c) => groups[c]).map((c) => `
-      <div class="shop-card"><h3><span class="leg-dot" style="background:${CAT_COLOR[c]}"></span> ${esc(CATS[c])}</h3>
-        ${groups[c].map((i) => `<label class="item ${checked[itemKey(i)] ? 'done' : ''}">
-          <input type="checkbox" data-mcheck="${esc(itemKey(i))}" ${checked[itemKey(i)] ? 'checked' : ''}>
-          <span class="box">✓</span>
-          <span class="txt"><span class="nm">${esc(i.name)}</span><div class="qty">${esc(fmtQty(i.total, i.unit))}</div></span>
-        </label>`).join('')}
-      </div>`).join('')}
-    ${purchase}`;
+function checksList(scope, items, checked) {
+  return items.map((i) => `<label class="item ${checked[itemKey(i)] ? 'done' : ''}">
+    <input type="checkbox" data-mcheck="${esc(itemKey(i))}" data-scope="${esc(scope)}" ${checked[itemKey(i)] ? 'checked' : ''}>
+    <span class="box">✓</span>
+    <span class="txt"><span class="nm">${esc(i.name)}</span><div class="qty">${esc(fmtQty(i.total, i.unit))}</div></span>
+  </label>`).join('');
+}
+
+function shopHtml() {
+  const ym = monthSel;
+  const m = monthRec(ym);
+  if (m.status !== 'confirmed') {
+    return `<div class="card empty">Сначала подтвердите месяц во вкладке «План». Тогда появятся списки: запас на месяц и по одному списку на каждую неделю.</div>`;
+  }
+  const longItems = (m.long && m.long.items) || [];
+  const longChecked = (m.long && m.long.checked) || {};
+  const longGroups = {};
+  for (const i of longItems) (longGroups[i.cat] = longGroups[i.cat] || []).push(i);
+  const longCard = `<div class="shop-card">
+    <h3>Запас на месяц · покупаем один раз</h3>
+    ${m.dirty ? '<div class="warn-box">Меню изменили: обновите списки во вкладке «План».</div>' : ''}
+    ${m.longBought ? '<p class="note">Запас куплен и сохранён в операции.</p>'
+      : `${longItems.length ? Object.keys(CATS).filter((c) => longGroups[c]).map((c) => `
+          <div class="sub-title"><span class="leg-dot" style="background:${CAT_COLOR[c]}"></span> ${esc(CATS[c])}</div>
+          ${checksList(`long:${ym}`, longGroups[c], longChecked)}`).join('')
+        : '<div class="empty">В меню нет товаров длительного хранения</div>'}
+      ${longItems.length ? `<div style="margin-top:12px">${purchaseBtn('Запас куплен', { act: 'buy-long', attrs: `data-ym="${ym}"` })}</div>` : ''}`}
+  </div>`;
+  const weekCards = monthWeeks(ym).map((mon) => {
+    const w = M().weeks[mon] || {};
+    if (!w.list) return '';
+    const checked = w.checked || {};
+    const groups = {};
+    for (const i of w.list) (groups[i.cat] = groups[i.cat] || []).push(i);
+    const bought = w.status === 'bought';
+    return `<div class="shop-card">
+      <div class="row" style="justify-content:space-between">
+        <h3 style="margin:0">Неделя ${esc(weekLabel(mon))}</h3>
+        <span class="pill ${bought ? 'pill-bought' : 'pill-confirmed'}">${bought ? 'Куплено' : 'Ожидает закупки'}</span></div>
+      ${w.listDirty ? '<div class="warn-box">Меню этой недели изменили. Обновите списки во вкладке «План».</div>' : ''}
+      ${w.list.length ? Object.keys(CATS).filter((c) => groups[c]).map((c) => `
+        <div class="sub-title"><span class="leg-dot" style="background:${CAT_COLOR[c]}"></span> ${esc(CATS[c])}</div>
+        ${checksList(mon, groups[c], checked)}`).join('')
+        : '<div class="empty">На эту неделю продуктов нет</div>'}
+      ${bought ? '' : `<div style="margin-top:12px">${purchaseBtn('Закупка сделана', { act: 'buy-week', attrs: `data-mon="${mon}"` })}</div>`}
+    </div>`;
+  }).join('');
+  return longCard + weekCards;
 }
 
 // ---------- вкладка «Статистика» ----------
@@ -323,20 +430,24 @@ function statsHtml() {
     if (p.items && p.items.length) for (const it of p.items) byCat[it.cat] = (byCat[it.cat] || 0) + it.price;
     else byCat.unsplit = (byCat.unsplit || 0) + p.total;
   }
-  const weeks = {};
-  for (const p of list) weeks[p.week] = (weeks[p.week] || 0) + p.total;
-  const weekRows = Object.entries(weeks).sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([mon, v]) => ({ label: weekLabel(mon), value: v }));
-  const maxWeek = Math.max(0, ...weekRows.map((r) => r.value));
+  const groups = {};
+  for (const p of list) {
+    const key = p.kind === 'long' ? `long|${p.ym}` : p.week;
+    groups[key] = (groups[key] || 0) + p.total;
+  }
+  const rows = Object.entries(groups).sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([k, v]) => ({
+    label: k.startsWith('long|') ? 'Запас на месяц' : weekLabel(k), value: v
+  }));
+  const maxRow = Math.max(0, ...rows.map((r) => r.value));
   const itemTotals = {};
   for (const p of list) for (const it of p.items || []) itemTotals[it.name] = (itemTotals[it.name] || 0) + it.price;
   const top = Object.entries(itemTotals).sort((a, b) => b[1] - a[1]).slice(0, 6);
   const diff = prevTotal ? Math.round(((total - prevTotal) / prevTotal) * 100) : null;
-
   return `
     <div class="pl-week-nav">
-      <button class="icon-btn" data-mact="month" data-d="-1" aria-label="Предыдущий месяц">‹</button>
-      <div class="pl-week-title"><strong style="text-transform:capitalize">${esc(monthLabel(ym))}</strong></div>
-      <button class="icon-btn" data-mact="month" data-d="1" aria-label="Следующий месяц">›</button>
+      <button class="icon-btn" data-mact="stats-month" data-d="-1" aria-label="Предыдущий месяц">‹</button>
+      <div class="pl-week-title"><strong style="text-transform:capitalize">${esc(monthTitle(ym))}</strong></div>
+      <button class="icon-btn" data-mact="stats-month" data-d="1" aria-label="Следующий месяц">›</button>
     </div>
     ${list.length ? `
       <div class="grid-2" style="margin-bottom:12px">
@@ -347,10 +458,10 @@ function statsHtml() {
       </div>
       <div class="card"><div class="setting-title">На что ушли деньги</div>
         <div class="donut-wrap">${donutSvg(byCat, total)}<div class="legend">${legendHtml(byCat, total)}</div></div></div>
-      <div class="card"><div class="setting-title">По неделям</div>${barsHtml(weekRows, maxWeek)}</div>
+      <div class="card"><div class="setting-title">По закупкам</div>${barsHtml(rows, maxRow)}</div>
       ${top.length ? `<div class="card"><div class="setting-title">Самые дорогие продукты</div>
         ${barsHtml(top.map(([label, value]) => ({ label, value })), top[0][1])}</div>` : ''}`
-      : `<div class="card empty">За ${esc(monthLabel(ym))} закупок пока нет. После первой закупки здесь появятся диаграммы.</div>`}`;
+      : `<div class="card empty">За ${esc(monthTitle(ym))} закупок пока нет. После первой закупки здесь появятся диаграммы.</div>`}`;
 }
 
 // ---------- вкладка «Блюда» ----------
@@ -374,12 +485,12 @@ function libHtml() {
       </button>`).join('') || '<div class="card empty">Ничего не найдено</div>'}</div>`;
 }
 
-const TABS = [['week', 'Неделя'], ['shop', 'Покупки'], ['stats', 'Статистика'], ['lib', 'Блюда']];
+const TABS = [['plan', 'План'], ['shop', 'Покупки'], ['stats', 'Статистика'], ['lib', 'Блюда']];
 
 export function plannerHtml() {
   if (!M()) return '<div class="card empty">Меню загружается…</div>';
   const tabs = `<div class="tabline">${TABS.map(([v, l]) => `<button class="${TAB === v ? 'active' : ''}" data-mtab="${v}">${l}</button>`).join('')}</div>`;
-  const body = TAB === 'week' ? weekHtml() : TAB === 'shop' ? shopHtml() : TAB === 'stats' ? statsHtml() : libHtml();
+  const body = TAB === 'plan' ? planHtml() : TAB === 'shop' ? shopHtml() : TAB === 'stats' ? statsHtml() : libHtml();
   return tabs + body;
 }
 
@@ -387,65 +498,28 @@ export function plannerHtml() {
 export function plannerSummaryHtml() {
   if (!M()) return '';
   const today = ctx.todayIso();
-  const mon = mondayOf(today);
-  const w = M().weeks[mon];
+  const w = M().weeks[mondayOf(today)];
+  const day = dayOf(today);
   const rows = MEALS.map(([slot, title]) => {
-    const name = w ? (w.days[today] || {})[slot] : '';
-    if (slot === 'lunch' && w && (w.days[today] || {}).lunchOn === false) return '';
-    const d = dishByName(name);
-    return `<div class="li"><div class="main"><div class="t">${esc(d ? (d.emoji || '') + ' ' : '')}${esc(name || 'Не выбрано')}</div>
+    if (!on(day, slot)) return `<div class="li"><div class="main"><div class="t muted">Дома не едим</div><div class="s">${esc(title)}</div></div></div>`;
+    const d = dishByName(day[slot]);
+    return `<div class="li"><div class="main"><div class="t">${esc(d ? (d.emoji || '') + ' ' : '')}${esc(day[slot] || 'Не выбрано')}</div>
       <div class="s">${esc(title)}</div></div></div>`;
   }).join('');
   return `<div class="card">
     <div class="row" style="justify-content:space-between">
       <div><div class="setting-title" style="margin:0">Меню на сегодня</div>
-      <div class="note">${esc(w ? STATUS_RU[w.status] : 'Неделя не запланирована')}</div></div>
+      <div class="note">${esc(w ? (w.status === 'confirmed' ? 'Подтверждено' : w.status === 'bought' ? 'Куплено' : 'Черновик') : 'Не запланировано')}</div></div>
       <button class="btn soft" data-act="sec" data-v="menu">Открыть меню</button></div>
     ${rows}</div>`;
 }
 
-// ---------- действия ----------
-function confirmWeek() {
-  const w = weekOf(weekStart);
-  w.status = 'confirmed';
-  w.list = aggregate(weekStart);
-  w.checked = w.checked || {};
-  w.listDirty = false;
-  ctx.toast('Меню подтверждено, список покупок готов');
-  TAB = 'shop';
-}
-
-function refreshList() {
-  const w = weekOf(weekStart);
-  const fresh = aggregate(weekStart);
-  const keep = w.checked || {};
-  w.list = fresh;
-  w.checked = Object.fromEntries(fresh.filter((i) => keep[itemKey(i)]).map((i) => [itemKey(i), true]));
-  w.listDirty = false;
-  ctx.toast('Список обновлён');
-}
-
-function fillRandom() {
-  const w = weekOf(weekStart);
-  let filled = 0;
-  for (const iso of weekDays(weekStart)) {
-    w.days[iso] = w.days[iso] || {};
-    for (const [slot] of MEALS) {
-      if (slot === 'lunch' && w.days[iso].lunchOn === false) continue;
-      if (w.days[iso][slot]) continue;
-      const pool = dishesFor(slot);
-      if (!pool.length) continue;
-      w.days[iso][slot] = pool[Math.floor(Math.random() * pool.length)].name;
-      filled++;
-    }
-  }
-  ctx.toast(filled ? `Заполнено пустых мест: ${filled}` : 'Все места уже заполнены');
-}
-
-function openPurchase() {
+// ---------- закупки ----------
+function openPurchase(target) {
+  PURCHASE = target;
   purchaseMode = 'sum';
   purchaseParsed = null;
-  ctx.openModal(`Закупка · ${weekLabel(weekStart)}`, `
+  ctx.openModal(`Закупка · ${target.label}`, `
     <div class="tabline">
       <button class="active" data-pmode="sum">Указать сумму</button>
       <button data-pmode="file">Загрузить чек</button></div>
@@ -456,9 +530,9 @@ function openPurchase() {
 function bindPurchase() {
   const root = document.querySelector('#modal-body');
   root.querySelectorAll('[data-pmode]').forEach((b) => {
-    b.onclick = () => { purchaseMode = b.dataset.pmode; purchaseParsed = null; openPurchase(); };
+    b.classList.toggle('active', b.dataset.pmode === purchaseMode);
+    b.onclick = () => { purchaseMode = b.dataset.pmode; purchaseParsed = null; openPurchase(PURCHASE); };
   });
-  root.querySelectorAll('[data-pmode]').forEach((b) => b.classList.toggle('active', b.dataset.pmode === purchaseMode));
   const pane = root.querySelector('#p-pane');
   const today = ctx.todayIso();
   if (purchaseMode === 'sum') {
@@ -489,11 +563,16 @@ function bindPurchase() {
       const lines = await readReceiptLines(file);
       purchaseParsed = parseReceiptLines(lines);
       if (!purchaseParsed.items.length) {
-        res.innerHTML = '<div class="warn-box">Не нашёл позиций в файле. Попробуйте CSV или TXT, либо укажите сумму вручную.</div>';
+        res.innerHTML = '<div class="warn-box">Не нашёл позиций. Попробуйте CSV или TXT, либо укажите сумму вручную.</div>';
         return;
       }
       res.innerHTML = receiptPreviewHtml(purchaseParsed, today);
-      bindReceiptSave(res, today);
+      res.querySelector('#r-save').onclick = () => {
+        const total = parseFloat(String(res.querySelector('#r-total').value).replace(',', '.'));
+        if (!total || total <= 0) return ctx.toast('Введите итог чека');
+        savePurchase({ date: res.querySelector('#r-date').value || today, store: res.querySelector('#r-store').value.trim(),
+          total, items: purchaseParsed.items, method: 'file' });
+      };
     } catch (err) {
       res.innerHTML = `<div class="warn-box">Не удалось прочитать файл: ${esc(err.message)}. Укажите сумму вручную.</div>`;
     }
@@ -519,31 +598,26 @@ function receiptPreviewHtml(p, today) {
     </div>`;
 }
 
-function bindReceiptSave(res, today) {
-  res.querySelector('#r-save').onclick = () => {
-    const total = parseFloat(String(res.querySelector('#r-total').value).replace(',', '.'));
-    if (!total || total <= 0) return ctx.toast('Введите итог чека');
-    savePurchase({
-      date: res.querySelector('#r-date').value || today,
-      store: res.querySelector('#r-store').value.trim(),
-      total, items: purchaseParsed.items, method: 'file'
-    });
-  };
-}
-
 function savePurchase({ date, store, total, items, method }) {
+  const t = PURCHASE;
   const id = ctx.uid();
   const byCat = {};
   for (const it of items) byCat[it.cat] = (byCat[it.cat] || 0) + it.price;
-  M().purchases.push({ id, week: weekStart, date, store, total, method, items, byCat });
-  const w = weekOf(weekStart);
-  w.status = 'bought';
-  w.purchaseId = id;
+  const week = t.kind === 'week' ? t.mon : mondayOf(`${t.ym}-01`);
+  M().purchases ||= [];
+  M().purchases.push({ id, kind: t.kind, week, ym: t.kind === 'long' ? t.ym : null, date, store, total, method, items, byCat });
+  if (t.kind === 'week') {
+    const w = weekOf(t.mon);
+    w.status = 'bought';
+    w.purchaseId = id;
+  } else {
+    monthRec(t.ym).longBought = true;
+  }
   ctx.addTransaction({
     type: 'expense', amount: total, date, category: 'Продукты', account: '', personId: '', private: false,
-    note: `Закупка: ${weekLabel(weekStart)}${store ? ' · ' + store : ''}`, fromPurchase: id
+    note: `Закупка: ${t.label}${store ? ' · ' + store : ''}`, fromPurchase: id
   });
-  ctx.log?.(`Закупка ${ctx.money(total)}${store ? ' · ' + store : ''}`);
+  ctx.log?.(`Закупка ${money(total)}${store ? ' · ' + store : ''}`);
   ctx.closeModal();
   ctx.toast('Закупка сохранена, операция добавлена');
   TAB = 'stats';
@@ -556,7 +630,7 @@ function dishFormHtml(d) {
   const ing = d ? d.ingredients : [];
   const catOpts = (cur) => Object.keys(CATS).filter((c) => c !== 'unsplit')
     .map((c) => `<option value="${c}" ${c === cur ? 'selected' : ''}>${esc(CATS[c])}</option>`).join('');
-  const row = (i = { name: '', a: '', b: '', unit: 'г', cat: 'other' }) => `
+  const row = (i) => `
     <div class="ing-row">
       <input data-f="name" placeholder="Продукт" value="${esc(i.name)}">
       <input data-f="a" inputmode="decimal" placeholder="мен." value="${i.a ?? ''}">
@@ -588,7 +662,9 @@ function openDishForm(name) {
   ctx.openModal(d ? d.name : 'Новое блюдо', dishFormHtml(d));
   const root = document.querySelector('#modal-body');
   const list = root.querySelector('#ing-list');
-  const newRow = () => {
+  const bindRm = () => list.querySelectorAll('[data-rm]').forEach((b) => { b.onclick = () => b.closest('.ing-row').remove(); });
+  bindRm();
+  root.querySelector('#ing-add').onclick = () => {
     const tmp = document.createElement('div');
     tmp.innerHTML = `<div class="ing-row">
       <input data-f="name" placeholder="Продукт"><input data-f="a" inputmode="decimal" placeholder="мен.">
@@ -598,18 +674,14 @@ function openDishForm(name) {
     list.appendChild(tmp.firstElementChild);
     bindRm();
   };
-  const bindRm = () => list.querySelectorAll('[data-rm]').forEach((b) => { b.onclick = () => b.closest('.ing-row').remove(); });
-  bindRm();
-  root.querySelector('#ing-add').onclick = newRow;
-
   root.querySelector('#d-save').onclick = () => {
     const nm = root.querySelector('#d-name').value.trim();
     if (!nm) return ctx.toast('Введите название');
     const clash = dishByName(nm);
     if (clash && clash !== d) return ctx.toast('Блюдо с таким названием уже есть');
+    const num = (v) => { const x = parseFloat(String(v).replace(',', '.')); return isNaN(x) ? 0 : x; };
     const ingredients = [...list.querySelectorAll('.ing-row')].map((r) => {
       const g = (f) => r.querySelector(`[data-f="${f}"]`).value;
-      const num = (v) => { const x = parseFloat(String(v).replace(',', '.')); return isNaN(x) ? 0 : x; };
       return { name: g('name').trim(), a: num(g('a')), b: num(g('b')), unit: g('unit').trim() || 'г', cat: g('cat') };
     }).filter((i) => i.name);
     const dish = {
@@ -638,44 +710,55 @@ function openDishForm(name) {
   };
 }
 
-// ---------- привязка обработчиков ----------
+// ---------- инициализация и обработчики ----------
+export function plannerInit(context) {
+  ctx = context;
+  monthSel = ctx.todayIso().slice(0, 7);
+  statsMonth = monthSel;
+  if (M()) M().months ||= {};
+}
+
+function act(b) {
+  const a = b.dataset.mact;
+  const ym = b.dataset.ym;
+  if (a === 'month') monthSel = shiftMonth(monthSel, Number(b.dataset.d));
+  else if (a === 'stats-month') statsMonth = shiftMonth(statsMonth, Number(b.dataset.d));
+  else if (a === 'fill') {
+    const n = fillEmpty(ym);
+    ctx.toast(n ? `Заполнено мест: ${n}` : 'Все места уже заполнены');
+  }
+  else if (a === 'confirm-month') { confirmMonth(ym); ctx.toast('Месяц подтверждён, списки созданы'); TAB = 'shop'; }
+  else if (a === 'refresh') { refreshMonth(ym); ctx.toast('Списки обновлены'); }
+  else if (a === 'unlock') { const err = unlockMonth(ym); ctx.toast(err || 'Месяц снова в черновике'); }
+  else if (a === 'buy-week') { openPurchase({ kind: 'week', mon: b.dataset.mon, label: weekLabel(b.dataset.mon) }); return; }
+  else if (a === 'buy-long') { openPurchase({ kind: 'long', ym, label: `запас на ${monthTitle(ym)}` }); return; }
+  else if (a === 'dish-new') { openDishForm(null); return; }
+  else if (a === 'dish-edit') { openDishForm(b.dataset.name); return; }
+  ctx.render();
+}
+
 export function plannerBind() {
   if (!M()) return;
   const root = document.querySelector('#main');
   root.querySelectorAll('[data-mtab]').forEach((b) => { b.onclick = () => { TAB = b.dataset.mtab; ctx.render(); }; });
-  root.querySelectorAll('[data-mact]').forEach((b) => {
-    b.onclick = () => {
-      const a = b.dataset.mact;
-      if (a === 'wk') { weekStart = addDays(weekStart, Number(b.dataset.d)); ctx.render(); }
-      else if (a === 'confirm') { confirmWeek(); ctx.render(); }
-      else if (a === 'refresh') { refreshList(); ctx.render(); }
-      else if (a === 'fill') { fillRandom(); ctx.render(); }
-      else if (a === 'buy') openPurchase();
-      else if (a === 'month') { statsMonth = shiftMonth(statsMonth, Number(b.dataset.d)); ctx.render(); }
-      else if (a === 'dish-new') openDishForm(null);
-      else if (a === 'dish-edit') openDishForm(b.dataset.name);
-    };
-  });
+  root.querySelectorAll('[data-mact]').forEach((b) => { b.onclick = () => act(b); });
   root.querySelectorAll('select[data-slot]').forEach((s) => {
-    s.onchange = () => { setSlot(weekStart, s.dataset.day, s.dataset.slot, s.value); ctx.save(); ctx.render(); };
+    s.onchange = () => { setDay(s.dataset.day, { [s.dataset.slot]: s.value }); ctx.render(); };
   });
-  root.querySelectorAll('[data-lunch-on]').forEach((c) => {
+  root.querySelectorAll('input[data-on]').forEach((c) => {
     c.onchange = () => {
-      const iso = c.dataset.lunchOn;
-      const w = weekOf(weekStart);
-      w.days[iso] = w.days[iso] || {};
-      w.days[iso].lunchOn = c.checked;
-      if (!c.checked) w.days[iso].lunch = '';
-      if (w.status !== 'draft') w.listDirty = true;
-      ctx.save(); ctx.render();
+      const slot = c.dataset.on;
+      setDay(c.dataset.day, c.checked ? { [slot + 'On']: true } : { [slot]: '', [slot + 'On']: false });
+      ctx.render();
     };
   });
   root.querySelectorAll('[data-mcheck]').forEach((c) => {
     c.onchange = () => {
-      const w = weekOf(weekStart);
-      w.checked = w.checked || {};
-      if (c.checked) w.checked[c.dataset.mcheck] = true; else delete w.checked[c.dataset.mcheck];
-      ctx.save(); ctx.render();
+      const scope = c.dataset.scope;
+      const obj = scope.startsWith('long:') ? monthRec(scope.slice(5)).long : weekOf(scope);
+      obj.checked = obj.checked || {};
+      if (c.checked) obj.checked[c.dataset.mcheck] = true; else delete obj.checked[c.dataset.mcheck];
+      ctx.render();
     };
   });
   root.querySelectorAll('[data-lfilter]').forEach((b) => { b.onclick = () => { libFilter = b.dataset.lfilter; ctx.render(); }; });
