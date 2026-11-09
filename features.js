@@ -631,7 +631,6 @@ export function remView() {
     </div>`;
 }
 
-export const EXTRA_ACTIONS_ALL = { ...EXTRA_ACTIONS, ...EXTRA_CATS_ACTIONS };
 
 // ---------- категории напоминаний и итоговый блок главной ----------
 const BUILTIN_CATS = ['rem', 'pay', 'income', 'bday'];
@@ -740,3 +739,5 @@ export const EXTRA_CATS_ACTIONS = {
     return false;
   }
 };
+
+export const EXTRA_ACTIONS_ALL = { ...EXTRA_ACTIONS, ...EXTRA_CATS_ACTIONS };
