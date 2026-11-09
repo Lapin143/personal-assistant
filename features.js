@@ -140,14 +140,14 @@ export function cushionHtml() {
 }
 
 // ---------- Финансы: бюджет, год, отчёт ----------
-export const FIN_TABS = [['incomes', 'Поступления'], ['budget', 'Бюджет'], ['year', 'Год'], ['report', 'Отчёт']];
+export const FIN_TABS = [['incomes', 'Поступления'], ['budget', 'Бюджет'], ['year', 'Год']];
 export const isFinExtraTab = (tab) => FIN_TABS.some(([v]) => v === tab);
 
 export function finTabHtml(tab, month) {
   if (tab === 'incomes') return incomeTabHtml(month);
   if (tab === 'budget') return budgetHtml(month);
   if (tab === 'year') return yearHtml(month);
-  return reportHtml(month);
+  return yearHtml(month);
 }
 
 function budgetHtml(month) {
@@ -192,19 +192,33 @@ function barRows(rows, max) {
     <span class="bar-val">${money(r.value)}</span></div>`).join('');
 }
 
+// Период отчёта на вкладке «Год»: месяц или весь год. Выбор хранится до перезагрузки.
+let REPORT_PERIOD = null;
+
 function yearHtml(month) {
   const s = S();
   const y = month.slice(0, 4);
   const regular = s.recurring.filter((r) => r.active).reduce((a, r) => a + (Number(r.amount) || 0), 0);
+  const incomeMonthly = s.incomes.filter((i) => i.active).reduce((a, i) => a + (Number(i.amount) || 0), 0);
   const rows = MONTHS_SHORT.map((label, i) => ({
     label,
-    value: regular + s.yearly.filter((x) => x.month === i + 1).reduce((a, x) => a + (Number(x.amount) || 0), 0)
+    exp: regular + s.yearly.filter((x) => x.month === i + 1).reduce((a, x) => a + (Number(x.amount) || 0), 0),
+    inc: incomeMonthly
   }));
-  const max = Math.max(1, ...rows.map((r) => r.value));
+  const max = Math.max(1, ...rows.flatMap((r) => [r.exp, r.inc]));
+  const pct = (v) => Math.round((v / max) * 100);
   const list = s.yearly.slice().sort((a, b) => (a.month - b.month) || (a.day - b.day));
-  return `<div class="card"><div class="setting-title">Расходы по месяцам, ${y}</div>
-      <p class="setting-desc">Регулярные платежи каждый месяц плюс ежегодные, которые приходятся на этот месяц.</p>
-      ${barRows(rows, max)}</div>
+  const period = REPORT_PERIOD && REPORT_PERIOD.startsWith(y) ? REPORT_PERIOD : month;
+  const picker = [[y, 'Весь год'], ...MONTHS_SHORT.map((l, i) => [`${y}-${String(i + 1).padStart(2, '0')}`, l])]
+    .map(([v, l]) => `<button class="${v === period ? 'active' : ''}" data-act="repPeriod" data-v="${v}">${l}</button>`).join('');
+  return `<div class="card">
+      <div class="setting-title">Доходы и расходы по месяцам, ${y}</div>
+      <p class="setting-desc">План: регулярные поступления и платежи, плюс ежегодные платежи в свой месяц.</p>
+      <div class="year-legend"><span><i class="lg inc"></i>Доходы</span><span><i class="lg exp"></i>Расходы</span></div>
+      ${rows.map((r) => `<div class="year-row"><span class="ym">${r.label}</span>
+        <div class="year-bars"><div class="yb inc" style="width:${pct(r.inc)}%"></div><div class="yb exp" style="width:${pct(r.exp)}%"></div></div>
+        <span class="yv"><span class="inc-t">${money(r.inc)}</span><br><span class="exp-t">${money(r.exp)}</span></span></div>`).join('')}
+    </div>
     <div class="card"><div class="row" style="justify-content:space-between">
       <div class="setting-title">Ежегодные платежи</div><button class="btn" data-act="addYearly">+ Платёж</button></div>
       ${list.length ? list.map((x) => `<div class="li">
@@ -212,22 +226,27 @@ function yearHtml(month) {
         <div class="s">${x.day}-го ${MONTHS[x.month - 1]}${x.personId ? ' · ' + esc(personName(x.personId)) : ''}</div></div>
         <div class="amt exp">−${money(x.amount)}</div>
         <button class="icon-btn" data-act="del" data-coll="yearly" data-id="${x.id}" aria-label="Удалить">${X()}</button></div>`).join('')
-        : '<div class="empty">Ежегодных платежей нет: страховка, налог, годовая подписка</div>'}</div>`;
+        : '<div class="empty">Ежегодных платежей нет: страховка, налог, годовая подписка</div>'}</div>
+    <div class="card">
+      <div class="setting-title">Отчёт</div>
+      <p class="setting-desc">Выберите месяц или весь год и отправьте сводку.</p>
+      <div class="tabline">${picker}</div>
+      ${reportHtml(period)}
+    </div>`;
 }
 
-function reportHtml(month) {
+function reportHtml(period) {
   const s = S();
-  const ops = visible().filter((o) => o.date.startsWith(month));
+  const ops = visible().filter((o) => o.date.startsWith(period));
   const income = sumInc(ops);
   const expense = sumExp(ops);
   const byCat = {};
   for (const o of ops.filter((x) => x.type !== 'income')) byCat[o.category] = (byCat[o.category] || 0) + (Number(o.amount) || 0);
   const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
-  const purchases = ((s.menu && s.menu.purchases) || []).filter((p) => p.date.startsWith(month));
-  const tasks = s.homeTasks.filter((x) => (x.lastDone || '').startsWith(month)).length;
-  return `<div class="card report">
-    <div class="row" style="justify-content:space-between"><div class="setting-title" style="margin:0">Отчёт за ${monthTitle(month)}</div>
-      <button class="btn soft no-print" data-act="shareReport" data-month="${month}">${svg('share', 18)} Отправить</button></div>
+  const purchases = ((s.menu && s.menu.purchases) || []).filter((p) => p.date.startsWith(period));
+  return `<div class="report">
+    <div class="row" style="justify-content:space-between"><div class="sub-title" style="margin:0">${periodTitle(period)}</div>
+      <button class="btn soft no-print" data-act="shareReport" data-month="${period}">${svg('share', 18)} Отправить</button></div>
     <div class="grid-2" style="margin:12px 0">
       <div class="stat"><div class="lbl">Доходы</div><div class="val pos">${money(income)}</div></div>
       <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(expense)}</div></div></div>
@@ -236,10 +255,14 @@ function reportHtml(month) {
       const lim = Number(s.budgets[c]) || 0;
       return `<div class="cat-row"><span>${esc(c)}</span><span>${expense ? Math.round((v / expense) * 100) : 0}%${lim ? ' · лимит ' + money(lim) : ''}</span><span>${money(v)}</span></div>`;
     }).join('') : '<div class="empty">Расходов нет</div>'}
-    <div class="sub-title">Продукты и дом</div>
-    <div class="cat-row"><span>Закупок по меню</span><span>${purchases.length}</span><span>${money(purchases.reduce((a, p) => a + p.total, 0))}</span></div>
-    <div class="cat-row"><span>Дел по дому сделано</span><span></span><span>${tasks}</span></div>
+    <div class="sub-title">Закупки по меню</div>
+    <div class="cat-row"><span>Закупок</span><span>${purchases.length}</span><span>${money(purchases.reduce((a, p) => a + p.total, 0))}</span></div>
     </div>`;
+}
+
+// Название периода: «2026» → «2026 год», «2026-11» → «ноябрь 2026».
+function periodTitle(period) {
+  return period.length === 4 ? `Отчёт за ${period} год` : `Отчёт за ${monthTitle(period)}`;
 }
 
 // ---------- списки, идеи, подарки, активность ----------
@@ -486,7 +509,7 @@ function eventsOfMonth(ym) {
   }
   for (const x of s.recurring) if (x.active) add(at(x.day), 'pay', x.title, x.amount, { personId: x.personId });
   for (const x of s.yearly) if (x.month === m) add(at(x.day), 'pay', x.title, x.amount, { personId: x.personId });
-  for (const d of s.debts) if (d.remaining > 0) add(at(d.dueDay || 10), 'pay', `Долг: ${d.title}`, d.monthly);
+  for (const d of s.debts) if (d.remaining > 0) add(at(d.dueDay || 10), 'pay', `Кредит: ${d.title}`, d.monthly);
   for (const i of s.incomes) if (i.active) add(at(i.day), 'income', i.title, i.amount, { id: i.id, coll: 'incomes', personId: i.personId });
   return out;
 }
@@ -697,7 +720,7 @@ function reportText(month) {
   const byCat = {};
   for (const o of ops.filter((x) => x.type !== 'income')) byCat[o.category] = (byCat[o.category] || 0) + (Number(o.amount) || 0);
   const lines = Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([c, v]) => `• ${c}: ${money(v)}`);
-  return [`Отчёт за ${monthTitle(month)}`, `Доходы: ${money(sumInc(ops))}`, `Расходы: ${money(sumExp(ops))}`, ...lines].join('\n');
+  return [periodTitle(month), `Доходы: ${money(sumInc(ops))}`, `Расходы: ${money(sumExp(ops))}`, ...lines].join('\n');
 }
 
 // Берём галочки и названия из открытой формы, чтобы не потерять правки при перерисовке.
@@ -729,6 +752,7 @@ export const EXTRA_CATS_ACTIONS = {
     if (!name) return false;
     S().remCats = [...remCatList(), { id: 'c' + uid(), name, on: true }];
   },
+  repPeriod: (d) => { REPORT_PERIOD = d.v; },
   remCatEdit: (d) => {
     const cats = readCatsFromDom();
     REM_CAT_EDIT = REM_CAT_EDIT === d.id ? null : d.id;

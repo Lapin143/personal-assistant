@@ -1,7 +1,7 @@
 import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b4';
 import { featuresInit, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, extraReminders,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
-  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=b9';
+  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=b10';
 import { pullRemote, queuePush, authEnabled, signIn, signOutLocal, validToken, getSession } from './sync.js?v=b3';
 import { iso, todayIso, addDays, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js';
 
@@ -222,7 +222,7 @@ function viewFin() {
   const stats = `<div class="grid-2" style="margin-bottom:12px">
     <div class="stat"><div class="lbl">Доходы</div><div class="val pos">${money(s.income)}</div></div>
     <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(s.expense)}</div></div></div>`;
-  const tabs = `<div class="tabline">${[['ops', 'Операции'], ['rec', 'Регулярные'], FIN_TABS[0], ['debt', 'Долги'], ...FIN_TABS.slice(1)]
+  const tabs = `<div class="tabline">${[['ops', 'Операции'], ['rec', 'Регулярные'], FIN_TABS[0], ['debt', 'Кредиты'], ...FIN_TABS.slice(1)]
     .map(([v, l]) => `<button class="${FIN_TAB === v ? 'active' : ''}" data-act="finTab" data-v="${v}">${l}</button>`).join('')}</div>`;
 
   if (isFinExtraTab(FIN_TAB)) return top + stats + tabs + finTabHtml(FIN_TAB, FIN_MONTH);
@@ -255,7 +255,7 @@ function viewFin() {
       <p class="note">Итого в месяц: ${money(monthly)}</p></div>`;
   } else {
     body += `<div class="card"><div class="row" style="justify-content:space-between">
-      <div class="setting-title">Долги и кредиты</div><button class="btn" data-act="addDebt">+ Долг</button></div>
+      <div class="setting-title">Кредиты</div><button class="btn" data-act="addDebt">+ Кредит</button></div>
       ${S.debts.length ? S.debts.map((d) => {
         const m = debtMonths(d.remaining, d.monthly);
         const paid = d.total ? Math.round((1 - d.remaining / d.total) * 100) : 0;
@@ -266,7 +266,7 @@ function viewFin() {
           <div class="row" style="margin-top:8px">
             <button class="btn soft" data-act="payDebt" data-id="${d.id}">Внести платёж</button>
             <button class="icon-btn" data-act="del" data-coll="debts" data-id="${d.id}" aria-label="Удалить">${X}</button></div></div>`;
-      }).join('') : '<div class="empty">Долгов нет</div>'}</div>`;
+      }).join('') : '<div class="empty">Кредитов нет</div>'}</div>`;
   }
   return top + stats + tabs + body;
 }
@@ -516,9 +516,9 @@ const ADD = {
       category: o.category, account: o.account, personId: o.personId, active: true });
     return null;
   }),
-  addDebt: () => openForm('Долг или кредит', [
+  addDebt: () => openForm('Кредит', [
     { k: 'title', t: 'text', l: 'Название' },
-    { k: 'total', t: 'number', l: 'Сумма долга' },
+    { k: 'total', t: 'number', l: 'Сумма кредита' },
     { k: 'remaining', t: 'number', l: 'Остаток сейчас (если пусто, равен сумме)' },
     { k: 'monthly', t: 'number', l: 'Ежемесячный платёж' },
     { k: 'dueDay', t: 'number', l: 'День платежа (1–31)', v: 10 }
