@@ -642,14 +642,22 @@ export const REM_CATS_DEFAULT = () => [
 ];
 const remCatList = () => S().remCats || REM_CATS_DEFAULT();
 
+// Какая категория открыта для переименования и удаления (карандашик).
+let REM_CAT_EDIT = null;
 export function remCatsSettingsHtml() {
   const cats = remCatList();
   return `<div class="card"><div class="setting-title">Категории напоминаний</div>
-    <p class="setting-desc">Выключенная категория скрывается из календаря и колокольчика. Можно добавлять свои категории.</p>
-    ${cats.map((c) => `<div class="li">
-      <input type="checkbox" id="rco_${c.id}" ${c.on ? 'checked' : ''} aria-label="Показывать: ${esc(c.name)}">
-      <div class="main"><input id="rc_${c.id}" value="${esc(c.name)}" aria-label="Название категории"></div>
-      ${BUILTIN_CATS.includes(c.id) ? '' : `<button class="icon-btn" data-act="remCatDel" data-id="${c.id}" aria-label="Удалить категорию">${X()}</button>`}</div>`).join('')}
+    <p class="setting-desc">Выключенная категория скрывается из календаря и колокольчика.</p>
+    ${cats.map((c) => {
+      const editing = REM_CAT_EDIT === c.id;
+      return `<div class="li cat-li">
+        <input type="checkbox" id="rco_${c.id}" ${c.on ? 'checked' : ''} aria-label="Показывать: ${esc(c.name)}">
+        ${editing ? `<input id="rc_${c.id}" class="cat-name-input" value="${esc(c.name)}" aria-label="Название категории">`
+                  : `<span class="t cat-name">${esc(c.name)}</span>`}
+        <button class="icon-btn" data-act="remCatEdit" data-id="${c.id}" aria-label="${editing ? 'Готово' : 'Изменить категорию'}">${svg(editing ? 'check' : 'edit', 18)}</button>
+        ${editing && !BUILTIN_CATS.includes(c.id) ? `<button class="icon-btn" data-act="remCatDel" data-id="${c.id}" aria-label="Удалить категорию">${X()}</button>` : ''}
+      </div>`;
+    }).join('')}
     <div class="row" style="margin-top:10px"><input id="rc_new" placeholder="Например, «Вывоз мусора»" aria-label="Новая категория" style="flex:1;min-width:0">
       <button class="btn soft" data-act="remCatAdd">Добавить</button></div>
     <div class="pill-row" style="margin-top:10px"><button class="btn" data-act="remCatSave">Сохранить категории</button></div></div>`;
@@ -692,6 +700,18 @@ function reportText(month) {
   return [`Отчёт за ${monthTitle(month)}`, `Доходы: ${money(sumInc(ops))}`, `Расходы: ${money(sumExp(ops))}`, ...lines].join('\n');
 }
 
+// Берём галочки и названия из открытой формы, чтобы не потерять правки при перерисовке.
+function readCatsFromDom() {
+  const cats = remCatList();
+  for (const c of cats) {
+    const cb = document.getElementById('rco_' + c.id);
+    if (cb) c.on = cb.checked;
+    const nm = document.getElementById('rc_' + c.id);
+    if (nm && nm.value.trim()) c.name = nm.value.trim();
+  }
+  return cats;
+}
+
 export const EXTRA_CATS_ACTIONS = {
   remCatSave: () => {
     const cats = remCatList();
@@ -709,8 +729,14 @@ export const EXTRA_CATS_ACTIONS = {
     if (!name) return false;
     S().remCats = [...remCatList(), { id: 'c' + uid(), name, on: true }];
   },
+  remCatEdit: (d) => {
+    const cats = readCatsFromDom();
+    REM_CAT_EDIT = REM_CAT_EDIT === d.id ? null : d.id;
+    S().remCats = cats;
+  },
   remCatDel: (d) => {
-    S().remCats = remCatList().filter((c) => c.id !== d.id);
+    S().remCats = readCatsFromDom().filter((c) => c.id !== d.id);
+    REM_CAT_EDIT = null;
     for (const r of S().reminders) if (r.cat === d.id) r.cat = 'rem';
   },
   listRename: (d) => {

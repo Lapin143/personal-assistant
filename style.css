@@ -384,3 +384,8 @@ input[type="checkbox"] { width: auto; flex: 0 0 auto; }
 .icon-btn { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
 /* Белый текст на плашке «сегодня» с достаточным контрастом */
 .today-pill { background: #b5533c; }
+
+/* Категории напоминаний: галочка, название, карандашик */
+.cat-li { display: flex; align-items: center; gap: 10px; }
+.cat-li .cat-name { flex: 1; min-width: 0; }
+.cat-li .cat-name-input { flex: 1; min-width: 0; width: auto; }
