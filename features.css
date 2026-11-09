@@ -48,6 +48,11 @@
 .year-row:last-child{border-bottom:0}
 .year-row .ym{font-size:13px;color:var(--sub);font-weight:700}
 .year-bars{display:grid;gap:4px}
+.yb-track{position:relative;height:10px;border-radius:999px;background:var(--chip);overflow:hidden}
+.yb-track .yb{position:absolute;left:0;top:0;height:100%}
+.yb.plan,.lg.plan{opacity:.3}
+.plan-t{color:var(--sub);font-weight:600;font-size:12px}
+.year-total{display:flex;justify-content:space-between;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--row-line);font-weight:800}
 .yb{height:10px;border-radius:999px;min-width:2px}
 .yv{text-align:right;font-size:13px;line-height:1.35;white-space:nowrap;font-weight:700}
 .inc-t{color:#2e6b48}

@@ -196,25 +196,35 @@ let REPORT_PERIOD = null;
 function yearHtml(month) {
   const s = S();
   const y = month.slice(0, 4);
+  const curYm = today().slice(0, 7);
+  const ops = visible();
   const regular = s.recurring.filter((r) => r.active).reduce((a, r) => a + (Number(r.amount) || 0), 0);
-  const incomeMonthly = s.incomes.filter((i) => i.active).reduce((a, i) => a + (Number(i.amount) || 0), 0);
-  const rows = MONTHS_SHORT.map((label, i) => ({
-    label,
-    exp: regular,
-    inc: incomeMonthly
-  }));
-  const max = Math.max(1, ...rows.flatMap((r) => [r.exp, r.inc]));
+  const incomePlan = s.incomes.filter((i) => i.active).reduce((a, i) => a + (Number(i.amount) || 0), 0);
+  const rows = Array.from({ length: 12 }, (_, i) => {
+    const ym = `${y}-${String(i + 1).padStart(2, '0')}`;
+    const future = ym > curYm;
+    return { ym, label: MONTHS_SHORT[i], future, incPlan: incomePlan, incFact: sumInc(ops.filter((o) => o.date.startsWith(ym))), exp: regular };
+  });
+  const yearPlan = rows.reduce((a, r) => a + r.incPlan, 0);
+  const yearFact = rows.reduce((a, r) => a + (r.future ? 0 : r.incFact), 0);
+  const max = Math.max(1, ...rows.flatMap((r) => [r.incPlan, r.incFact, r.exp]));
   const pct = (v) => Math.round((v / max) * 100);
   const period = REPORT_PERIOD && REPORT_PERIOD.startsWith(y) ? REPORT_PERIOD : month;
-  const options = [[y, `Весь ${y} год`], ...Array.from({ length: 12 }, (_, i) => `${y}-${String(i + 1).padStart(2, '0')}`).map((v) => [v, monthTitle(v)])]
+  const options = [[y, `Весь ${y} год`], ...rows.map((r) => [r.ym, monthTitle(r.ym)])]
     .map(([v, l]) => `<option value="${v}" ${v === period ? 'selected' : ''}>${esc(l)}</option>`).join('');
   return `<div class="card">
-      <div class="setting-title">Доходы и расходы по месяцам, ${y}</div>
-      <p class="setting-desc">План: регулярные поступления и платежи по месяцам.</p>
-      <div class="year-legend"><span><i class="lg inc"></i>Доходы</span><span><i class="lg exp"></i>Расходы</span></div>
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <button class="icon-btn" data-act="finMonth" data-d="-12" aria-label="Предыдущий год">${svg('left', 18)}</button>
+        <div class="setting-title" style="margin:0">Доходы и расходы, ${y}</div>
+        <button class="icon-btn" data-act="finMonth" data-d="12" aria-label="Следующий год">${svg('right', 18)}</button></div>
+      <p class="setting-desc">Доходы: план — регулярные поступления, факт — все поступления в месяце. Расходы — план по регулярным платежам.</p>
+      <div class="year-legend"><span><i class="lg inc plan"></i>Доход, план</span><span><i class="lg inc"></i>Доход, факт</span><span><i class="lg exp"></i>Расход, план</span></div>
       ${rows.map((r) => `<div class="year-row"><span class="ym">${r.label}</span>
-        <div class="year-bars"><div class="yb inc" style="width:${pct(r.inc)}%"></div><div class="yb exp" style="width:${pct(r.exp)}%"></div></div>
-        <span class="yv"><span class="inc-t">${money(r.inc)}</span><br><span class="exp-t">${money(r.exp)}</span></span></div>`).join('')}
+        <div class="year-bars">
+          <div class="yb-track"><div class="yb inc plan" style="width:${pct(r.incPlan)}%"></div>${r.future ? '' : `<div class="yb inc" style="width:${pct(r.incFact)}%"></div>`}</div>
+          <div class="yb-track"><div class="yb exp" style="width:${pct(r.exp)}%"></div></div></div>
+        <span class="yv"><span class="inc-t">${r.future ? '—' : money(r.incFact)}</span> <span class="plan-t">из ${money(r.incPlan)}</span><br><span class="exp-t">${money(r.exp)}</span></span></div>`).join('')}
+      <div class="year-total"><span>Доходы за год</span><span><span class="inc-t">${money(yearFact)}</span> <span class="plan-t">из ${money(yearPlan)}</span></span></div>
     </div>
     <div class="card">
       <div class="setting-title">Отчёт</div>
