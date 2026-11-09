@@ -377,7 +377,9 @@ function checksList(scope, items, checked) {
 }
 
 let SHOP_TAB = null;
-const shortWeek = (mon) => { const d = new Date(mon + 'T00:00'); return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`; };
+// Закупаемся в воскресенье перед неделей меню.
+const shopDayOf = (mon) => addDays(mon, -1);
+const dmy = (iso) => { const [, m, d] = iso.split('-'); return `${d}.${m}`; };
 
 function longCardHtml(ym, m) {
   const longItems = (m.long && m.long.items) || [];
@@ -405,6 +407,7 @@ function weekCardHtml(mon, w) {
       <div class="row" style="justify-content:space-between">
         <h3 style="margin:0">Неделя ${esc(weekLabel(mon))}</h3>
         <span class="pill ${bought ? 'pill-bought' : 'pill-confirmed'}">${bought ? 'Куплено' : 'Ожидает закупки'}</span></div>
+      <p class="note" style="margin:4px 0 0">Закупка в воскресенье ${dmy(shopDayOf(mon))}</p>
       ${w.listDirty ? '<div class="warn-box">Меню этой недели изменили. Обновите списки во вкладке «План».</div>' : ''}
       ${w.list.length ? Object.keys(CATS).filter((c) => groups[c]).map((c) => `
         <div class="sub-title"><span class="leg-dot" style="background:${CAT_COLOR[c]}"></span> ${esc(CATS[c])}</div>
@@ -425,7 +428,7 @@ function shopHtml() {
   for (const mon of monthWeeks(ym)) {
     const w = M().weeks[mon] || {};
     if (!w.list) continue;
-    cards.push({ id: mon, label: `${w.status === 'bought' ? '✓ ' : ''}${shortWeek(mon)}`, html: weekCardHtml(mon, w) });
+    cards.push({ id: mon, label: `${w.status === 'bought' ? '✓ ' : ''}Вс ${dmy(shopDayOf(mon))}`, html: weekCardHtml(mon, w) });
   }
   const today = ctx.todayIso();
   const todayWeek = cards.find((c) => c.id !== 'long' && weekDays(c.id).includes(today));
@@ -547,16 +550,18 @@ function openPurchase(target) {
 
 function bindPurchase() {
   const root = document.querySelector('#modal-body');
+  const today = ctx.todayIso();
+  // Для недельной закупки по умолчанию — воскресенье перед неделей.
+  const defDate = PURCHASE && PURCHASE.kind === 'week' ? shopDayOf(PURCHASE.mon) : today;
   root.querySelectorAll('[data-pmode]').forEach((b) => {
     b.classList.toggle('active', b.dataset.pmode === purchaseMode);
     b.onclick = () => { purchaseMode = b.dataset.pmode; purchaseParsed = null; openPurchase(PURCHASE); };
   });
   const pane = root.querySelector('#p-pane');
-  const today = ctx.todayIso();
   if (purchaseMode === 'sum') {
     pane.innerHTML = `
       <div class="form">
-        <label class="field" for="p-date">Дата</label><input id="p-date" type="date" value="${today}">
+        <label class="field" for="p-date">Дата</label><input id="p-date" type="date" value="${defDate}">
         <label class="field" for="p-store">Магазин</label><input id="p-store" placeholder="Например, Пятёрочка">
         <label class="field" for="p-total">Сумма, ₽</label><input id="p-total" inputmode="decimal" placeholder="0">
         <button class="btn block" id="p-save">Сохранить закупку</button>
@@ -584,7 +589,7 @@ function bindPurchase() {
         res.innerHTML = '<div class="warn-box">Не нашёл позиций. Попробуйте CSV или TXT, либо укажите сумму вручную.</div>';
         return;
       }
-      res.innerHTML = receiptPreviewHtml(purchaseParsed, today);
+      res.innerHTML = receiptPreviewHtml(purchaseParsed, defDate);
       res.querySelector('#r-save').onclick = () => {
         const total = parseFloat(String(res.querySelector('#r-total').value).replace(',', '.'));
         if (!total || total <= 0) return ctx.toast('Введите итог чека');
@@ -597,14 +602,14 @@ function bindPurchase() {
   };
 }
 
-function receiptPreviewHtml(p, today) {
+function receiptPreviewHtml(p, defDate) {
   const byCat = {};
   for (const it of p.items) byCat[it.cat] = (byCat[it.cat] || 0) + it.price;
   return `
     <div class="receipt-preview">
       <div class="donut-wrap">${donutSvg(byCat, p.total)}<div class="legend">${legendHtml(byCat, p.total)}</div></div>
       <div class="form" style="margin-top:12px">
-        <label class="field" for="r-date">Дата</label><input id="r-date" type="date" value="${today}">
+        <label class="field" for="r-date">Дата</label><input id="r-date" type="date" value="${defDate}">
         <label class="field" for="r-store">Магазин</label><input id="r-store" placeholder="Например, Пятёрочка">
         <label class="field" for="r-total">Итог чека, ₽</label><input id="r-total" inputmode="decimal" value="${String(p.total).replace('.', ',')}">
       </div>
