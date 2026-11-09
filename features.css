@@ -35,3 +35,6 @@
 .cal-gift{background:#8a5fa8}
 .cal-income{background:#2e8b57}
 .cal-cell:focus-visible{outline:3px solid #9cc7b8;outline-offset:2px}
+.cal-bday{background:#c9a227}
+.cal-custom{background:#6b7f74}
+.money-main .forecast-row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--row-line)}

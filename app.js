@@ -1,7 +1,7 @@
-import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b2';
-import { featuresInit, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, feedHtml, cushionHtml, extraReminders,
-  viewLists, viewIdeas, viewGifts, viewActivity, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
-  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS } from './features.js?v=b4';
+import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b3';
+import { featuresInit, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, extraReminders,
+  viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
+  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=b5';
 import { pullRemote, queuePush, authEnabled, signIn, signOutLocal, validToken, getSession } from './sync.js?v=b3';
 import { iso, todayIso, addDays, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js';
 
@@ -48,6 +48,8 @@ const ICON = {
   list: '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
   gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v9h14v-9M12 8v13M12 8c-2-4-6-4-6-1s6 1 6 1zM12 8c2-4 6-4 6-1s-6 1-6 1z"/>',
   walk: '<circle cx="13" cy="4" r="2"/><path d="M9 21l2-6 3 2v5M8 10l2-3 4 1 2 4M11 14l-2 2"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
+  share: '<path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6h14v-6"/>',
   idea: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10c1 1 1 2 1 3h6c0-1 0-2 1-3a6 6 0 0 0-4-10z"/>'
 };
 const svg = (name, size = 22) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
@@ -77,24 +79,21 @@ let SEC = 'dash';
 let FIN_MONTH = todayIso().slice(0, 7);
 let FIN_TAB = 'ops';
 let GOAL_KIND = 'long';
-let HOUSE_TAB = 'tasks';
 let CAR_ID = null;
 
 // Разделы: нижняя панель (5 пунктов) и разделы внутри «Ещё».
 const SECTIONS = [
   ['dash', 'Главная'], ['menu', 'Меню'], ['fin', 'Финансы'], ['goals', 'Цели'],
-  ['rem', 'Напоминания'], ['car', 'Авто'], ['house', 'Дом']
+  ['rem', 'Напоминания'], ['car', 'Авто']
 ];
 const NAV = [
   ['dash', 'home', 'Главная'], ['menu', 'menu', 'Меню'], ['fin', 'wallet', 'Финансы'],
   ['goals', 'target', 'Цели'], ['more', 'dots', 'Ещё']
 ];
-const MORE_SECTIONS = ['more', 'rem', 'car', 'house', 'lists', 'ideas', 'gifts', 'activity', 'settings'];
+const MORE_SECTIONS = ['more', 'rem', 'car', 'lists', 'settings'];
 const MORE_ITEMS = [['rem', 'calendar', 'Напоминания', 'Свои напоминания и даты'], ['car', 'car', 'Авто', 'Машины, расходы, сроки'],
-  ['house', 'house', 'Дом', 'Дела по дому и счётчики'],
-  ['lists', 'list', 'Списки', 'Покупки и любые списки дел'], ['ideas', 'idea', 'Идеи и поездки', 'Задумки, бюджет, чек-листы'],
-  ['gifts', 'gift', 'Подарки', 'Даты, идеи, бюджет'], ['activity', 'walk', 'Активность', 'Шаги по дням'],
-  ['settings', 'gear', 'Настройки', 'Участники, счета, категории, данные']];
+  ['lists', 'list', 'Списки', 'Покупки и любые списки дел'],
+  ['settings', 'gear', 'Настройки', 'Участники, счета, категории, напоминания']];
 
 // ---------- формы ----------
 function fieldHtml(f) {
@@ -203,21 +202,14 @@ function pendingHtml() {
 // ---------- разделы ----------
 function viewDash() {
   const t = todayIso();
-  const ym = t.slice(0, 7);
-  const s = monthSummary(S, ym, ME);
   const up = upcoming(S, t, 14);
   return `
     ${dashTop()}
     ${plannerSummaryHtml()}
-    <div class="grid-2" style="margin-bottom:12px">
-      <div class="stat"><div class="lbl">Доходы, ${monthName(ym)}</div><div class="val pos">${money(s.income)}</div></div>
-      <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(s.expense)}</div></div>
-    </div>
     <div class="card"><div class="setting-title">Ближайшие 14 дней</div>
       ${up.length ? up.map(liUp).join('') : '<div class="empty">Ничего не запланировано</div>'}</div>
     <div class="card"><div class="setting-title">Цели</div>
       ${S.goals.length ? S.goals.slice(0, 3).map(goalRow).join('') : '<div class="empty">Целей пока нет</div>'}</div>
-    ${feedHtml()}
     `;
 }
 
@@ -230,7 +222,7 @@ function viewFin() {
   const stats = `<div class="grid-2" style="margin-bottom:12px">
     <div class="stat"><div class="lbl">Доходы</div><div class="val pos">${money(s.income)}</div></div>
     <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(s.expense)}</div></div></div>`;
-  const tabs = `<div class="tabline">${[['ops', 'Операции'], ['rec', 'Регулярные'], ['debt', 'Долги'], ...FIN_TABS]
+  const tabs = `<div class="tabline">${[['ops', 'Операции'], ['rec', 'Регулярные'], FIN_TABS[0], ['debt', 'Долги'], ...FIN_TABS.slice(1)]
     .map(([v, l]) => `<button class="${FIN_TAB === v ? 'active' : ''}" data-act="finTab" data-v="${v}">${l}</button>`).join('')}</div>`;
 
   if (isFinExtraTab(FIN_TAB)) return top + stats + tabs + finTabHtml(FIN_TAB, FIN_MONTH);
@@ -368,36 +360,6 @@ function viewCar() {
     ${S.cars.length ? S.cars.map(carCard).join('') : '<div class="card empty">Добавьте автомобиль, чтобы вести расходы и сроки</div>'}`;
 }
 
-function viewHouse() {
-  const tabs = `<div class="tabline">
-    <button class="${HOUSE_TAB === 'tasks' ? 'active' : ''}" data-act="houseTab" data-v="tasks">Дела</button>
-    <button class="${HOUSE_TAB === 'meters' ? 'active' : ''}" data-act="houseTab" data-v="meters">Счётчики</button></div>`;
-  if (HOUSE_TAB === 'tasks') {
-    const t = todayIso();
-    return tabs + `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn" data-act="addTask">+ Дело</button></div>
-      <div class="card">${S.homeTasks.length ? S.homeTasks.map((x) => {
-        const due = x.lastDone ? addDays(x.lastDone, x.everyDays) : t;
-        const overdue = due < t;
-        return `<div class="li ${overdue ? 'overdue' : ''}">
-          <div class="main"><div class="t">${esc(x.title)}</div>
-          <div class="s">Каждые ${x.everyDays} дн. · ${overdue ? 'просрочено · ' : ''}${fmtDate(due)}${personName(x.assignee) ? ' · ' + esc(personName(x.assignee)) : ''}</div></div>
-          <button class="btn soft" data-act="taskDone" data-id="${x.id}">Сделано</button>
-          <button class="icon-btn" data-act="del" data-coll="homeTasks" data-id="${x.id}" aria-label="Удалить">${X}</button></div>`;
-      }).join('') : '<div class="empty">Дел по дому пока нет</div>'}</div>`;
-  }
-  return tabs + `<div class="card">${S.meters.map((m) => {
-    const rs = S.meterReadings.filter((r) => r.meterId === m.id).sort((a, b) => (a.date < b.date ? 1 : -1));
-    const last = rs[0];
-    const prev = rs[1];
-    const used = last && prev ? last.value - prev.value : null;
-    return `<div class="li">
-      <div class="main"><div class="t">${esc(m.name)}</div>
-      <div class="s">${last ? `Последнее: ${last.value} ${esc(m.unit)} · ${fmtDate(last.date)}${used !== null ? ` · расход ${used.toFixed(1)} ${esc(m.unit)}` : ''}` : 'Показаний ещё нет'}</div></div>
-      <button class="icon-btn" data-act="addReading" data-id="${m.id}" aria-label="Внести показание">${svg('plus', 18)}</button>
-      <button class="icon-btn" data-act="del" data-coll="meters" data-id="${m.id}" aria-label="Удалить">${X}</button></div>`;
-  }).join('') || '<div class="empty">Счётчиков нет</div>'}
-  <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn soft" data-act="addMeter">+ Счётчик</button></div></div>`;
-}
 
 // Раздел «Ещё»: всё, что не поместилось в нижнюю панель.
 function viewMore() {
@@ -411,6 +373,7 @@ function viewMore() {
 
 function viewPeople() {
   return `
+    <div class="sub-title">Участники и вход</div>
     <div class="card"><div class="setting-title">Кто вы</div>
       <p class="setting-desc">Определяет, чьи личные операции вы видите. Это не защита данных: все данные доступны в браузере.</p>
       <select id="me-select">${S.people.map((p) => `<option value="${p.id}" ${p.id === ME ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
@@ -421,6 +384,11 @@ function viewPeople() {
         <input id="pn_${p.id}" type="text" value="${esc(p.name)}"></div>
         <button class="icon-btn" data-act="del" data-coll="people" data-id="${p.id}" aria-label="Удалить">${X}</button></div>`).join('')}
       <div class="pill-row"><button class="btn" data-act="saveNames">Сохранить имена</button></div></div>
+    <div class="card"><div class="setting-title">Аккаунт</div>
+      <p class="setting-desc">Вошли как ${esc(getSession() ? getSession().email : '—')}. Выход удаляет данные с этого устройства, в облаке они остаются.</p>
+      <div class="pill-row"><button class="btn soft" data-act="logout">Выйти</button></div></div>
+
+    <div class="sub-title">Финансы</div>
     <div class="card"><div class="row" style="justify-content:space-between"><div class="setting-title">Счета</div>
       <button class="btn soft" data-act="addAcc">+ Счёт</button></div>
       ${S.accounts.map((a) => `<div class="li"><div class="main"><div class="t">${esc(a.name)}</div>
@@ -430,26 +398,28 @@ function viewPeople() {
       <label class="field" for="cat-exp">Расходы</label><textarea id="cat-exp" rows="2">${esc(S.categories.expense.join(', '))}</textarea>
       <label class="field" for="cat-inc">Доходы</label><textarea id="cat-inc" rows="2">${esc(S.categories.income.join(', '))}</textarea>
       <button class="btn soft" data-act="saveCats">Сохранить категории</button></div>
-    <div class="card"><div class="setting-title">Оформление</div>
-      <label class="chk"><input type="checkbox" id="dark-toggle" ${document.documentElement.dataset.theme === 'dark' ? 'checked' : ''}> Тёмная тема</label></div>
-    <div class="card"><div class="setting-title">Напоминания</div>
+
+    <div class="sub-title">Напоминания</div>
+    <div class="card"><div class="setting-title">Показывать заранее</div>
       <p class="setting-desc">За сколько дней показывать события в колокольчике.</p>
       <label class="field" for="notify-days">Дней заранее</label><input id="notify-days" type="number" min="0" max="30" value="${S.settings.notifyDaysAhead}">
       <div class="pill-row"><button class="btn soft" data-act="saveSettings">Сохранить</button></div></div>
-    <div class="card"><div class="setting-title">Аккаунт</div>
-      <p class="setting-desc">Вошли как ${esc(getSession() ? getSession().email : '—')}. Выход удаляет данные с этого устройства, в облаке они остаются.</p>
-      <div class="pill-row"><button class="btn soft" data-act="logout">Выйти</button></div></div>
-    <div class="card"><div class="setting-title">Данные</div>
-      <p class="setting-desc">Экспорт сохраняет всё в файл. Не кладите этот файл в публичный репозиторий: в нём финансы.</p>
-      <div class="pill-row"><button class="btn" data-act="exportData">Экспорт</button>
-      <label class="btn soft" style="cursor:pointer">Импорт<input id="import-file" type="file" accept="application/json" class="hidden"></label>
-      <button class="btn danger" data-act="resetData">Сбросить всё</button></div></div>`;
+    ${remCatsSettingsHtml()}
+
+    <div class="sub-title">Оформление</div>
+    <div class="card"><div class="setting-title">Тема</div>
+      <label class="chk"><input type="checkbox" id="dark-toggle" ${document.documentElement.dataset.theme === 'dark' ? 'checked' : ''}> Тёмная тема</label></div>
+
+    <div class="sub-title">Данные</div>
+    <div class="card"><div class="setting-title">Резервная копия</div>
+      <p class="setting-desc">Сохраняет все данные в файл на случай поломки или смены телефона. Не публикуйте файл: в нём финансы.</p>
+      <div class="pill-row"><button class="btn" data-act="exportData">Скачать копию</button></div></div>`;
 }
 
-const TITLE = { ...Object.fromEntries(SECTIONS), settings: 'Настройки', more: 'Ещё', lists: 'Списки', ideas: 'Идеи и поездки', gifts: 'Подарки', activity: 'Активность' };
+const TITLE = { ...Object.fromEntries(SECTIONS), settings: 'Настройки', more: 'Ещё', lists: 'Списки' };
 
-const VIEWS = { dash: viewDash, fin: viewFin, goals: viewGoals, rem: viewRem, menu: plannerHtml, car: viewCar, house: viewHouse, more: viewMore, settings: viewPeople,
-  lists: viewLists, ideas: viewIdeas, gifts: viewGifts, activity: viewActivity };
+const VIEWS = { dash: viewDash, fin: viewFin, goals: viewGoals, rem: viewRem, menu: plannerHtml, car: viewCar, more: viewMore, settings: viewPeople,
+  lists: viewLists };
 
 // ---------- колокольчик: напоминания, прочтение и платежи к подтверждению ----------
 // Прочтение хранится по каждому участнику: S.reads[ключ] = [id людей, которые открыли].
@@ -510,22 +480,6 @@ function bindChange() {
   if (me) me.onchange = () => { ME = me.value; write('as.me', ME); render(); };
   const dt = $('#dark-toggle');
   if (dt) dt.onchange = () => { const mode = dt.checked ? 'dark' : 'light'; write('as.theme', mode); applyTheme(mode); };
-  const imp = $('#import-file');
-  if (imp) imp.onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    try {
-      const j = JSON.parse(await file.text());
-      if (!Array.isArray(j.people) || !Array.isArray(j.transactions)) throw new Error('это не файл «Ассистента»');
-      S = { ...S, ...j };
-      ME = S.people.some((p) => p.id === ME) ? ME : S.people[0].id;
-      save();
-      toast('Данные импортированы');
-      render();
-    } catch (err) {
-      alert('Не удалось импортировать: ' + err.message);
-    }
-  };
 }
 
 // ---------- действия (клики) ----------
@@ -621,23 +575,6 @@ const ADD = {
       insuranceUntil: o.insuranceUntil, inspectionUntil: o.inspectionUntil });
     return null;
   }),
-  addTask: () => openForm('Дело по дому', [
-    { k: 'title', t: 'text', l: 'Что сделать', ph: 'Поменять фильтр, мыть холодильник' },
-    { k: 'everyDays', t: 'number', l: 'Повторять каждые N дней', v: 30 },
-    { k: 'assignee', t: 'select', l: 'Кто', opts: personOpts(), v: '' }
-  ], (o) => {
-    if (!o.title || !need(o, ['everyDays']) || o.everyDays <= 0) return 'Укажите дело и период';
-    S.homeTasks.push({ id: uid(), title: o.title, everyDays: o.everyDays, lastDone: '', assignee: o.assignee });
-    return null;
-  }),
-  addMeter: () => openForm('Счётчик', [
-    { k: 'name', t: 'text', l: 'Название' },
-    { k: 'unit', t: 'text', l: 'Единица', ph: 'м³, кВт·ч' }
-  ], (o) => {
-    if (!o.name) return 'Введите название';
-    S.meters.push({ id: uid(), name: o.name, unit: o.unit || '' });
-    return null;
-  }),
   addPerson: () => openForm('Новый человек', [{ k: 'name', t: 'text', l: 'Имя' }], (o) => {
     if (!o.name) return 'Введите имя';
     S.people.push({ id: uid(), name: o.name });
@@ -655,13 +592,12 @@ const ADD = {
 
 const ACTIONS = {
   ...FEATURE_ACTIONS,
-  ...EXTRA_ACTIONS,
+  ...EXTRA_ACTIONS_ALL,
   logout: () => { signOutLocal(); localStorage.removeItem('as.data'); location.reload(); return false; },
   sec: (d) => { SEC = d.v; },
   finMonth: (d) => { FIN_MONTH = shiftMonth(FIN_MONTH, Number(d.d)); },
   finTab: (d) => { FIN_TAB = d.v; },
   goalKind: (d) => { GOAL_KIND = d.v; },
-  houseTab: (d) => { HOUSE_TAB = d.v; },
   carOpen: (d) => { CAR_ID = CAR_ID === d.id ? null : d.id; },
   del: (d) => {
     if (!confirm('Удалить запись?')) return false;
@@ -671,7 +607,6 @@ const ACTIONS = {
   payOk: (d) => { resolvePayment(d.id, d.ym, 'ok'); logEvent('Проведён регулярный платёж'); refreshBellIfOpen(); },
   paySkip: (d) => { resolvePayment(d.id, d.ym, 'skip'); refreshBellIfOpen(); },
   wishBought: (d) => { const w = S.wishes.find((x) => x.id === d.id); w.bought = !w.bought; },
-  taskDone: (d) => { const t = S.homeTasks.find((x) => x.id === d.id); t.lastDone = todayIso(); logEvent(`Сделано по дому: ${t.title}`); },
   topUp: (d) => {
     const g = S.goals.find((x) => x.id === d.id);
     openForm('Пополнить: ' + g.title, [{ k: 'amt', t: 'number', l: 'Сумма' }], (o) => {
@@ -710,18 +645,6 @@ const ACTIONS = {
     });
     return false;
   },
-  addReading: (d) => {
-    const m = S.meters.find((x) => x.id === d.id);
-    openForm(`Показание: ${m.name}`, [
-      { k: 'value', t: 'number', l: `Показание, ${m.unit}` },
-      { k: 'date', t: 'date', l: 'Дата', v: todayIso() }
-    ], (o) => {
-      if (!need(o, ['value'])) return 'Введите показание';
-      S.meterReadings.push({ id: uid(), meterId: m.id, value: o.value, date: o.date });
-      return null;
-    });
-    return false;
-  },
   saveNames: () => {
     let changed = 0;
     for (const p of S.people) {
@@ -750,14 +673,6 @@ const ACTIONS = {
     URL.revokeObjectURL(a.href);
     return false;
   },
-  resetData: async () => {
-    if (!confirm('Удалить все данные в этом браузере и вернуть пустой шаблон?')) return false;
-    localStorage.removeItem('as.data');
-    S = await loadBase();
-    ME = S.people[0].id;
-    save();
-    toast('Данные сброшены');
-  }
 };
 
 document.addEventListener('click', (e) => {

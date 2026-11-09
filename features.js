@@ -2,7 +2,7 @@
 // чеки (PDF, CSV, TXT, фото), голосовой ввод, списки, идеи и поездки, подарки, шаги, лента и отчёт.
 // Модуль не знает о DOM приложения напрямую: всё нужное передаётся через featuresInit(ctx).
 import { upcoming, addDays } from './core.js';
-import { readReceiptLines, parseReceiptLines } from './menu/planner.js?v=b2';
+import { readReceiptLines, parseReceiptLines } from './menu/planner.js?v=b3';
 
 let F = null;
 const S = () => F.S();
@@ -49,6 +49,7 @@ export function ensureData(s) {
   s.confirmed ||= {};
   s.incomes ||= [];
   s.incomeConfirmed ||= {};
+  s.remCats ||= REM_CATS_DEFAULT();
 }
 
 // ---------- категории из текста (голос, чеки) ----------
@@ -111,42 +112,9 @@ function liRow(x) {
     ${x.amount ? `<div class="amt">${money(x.amount)}</div>` : ''}</div>`;
 }
 
-function reviewHtml() {
-  const t = today();
-  const from = addDays(t, -6);
-  const s = S();
-  const spent = sumExp(visible().filter((o) => o.date >= from && o.date <= t));
-  const tasks = s.homeTasks.filter((x) => x.lastDone && x.lastDone >= from && x.lastDone <= t).length;
-  const dow = (new Date(t + 'T00:00').getDay() + 6) % 7;
-  const nextMon = addDays(t, 7 - dow);
-  const wk = (s.menu && s.menu.weeks[nextMon]);
-  const statusRu = { draft: 'черновик', confirmed: 'подтверждено', bought: 'куплено' };
-  const up = upcoming(s, t, 7);
-  return `<div class="card"><div class="setting-title">Итоги недели</div>
-    <div class="grid-2">
-      <div class="stat"><div class="lbl">Потрачено за 7 дней</div><div class="val">${money(spent)}</div></div>
-      <div class="stat"><div class="lbl">Дел по дому сделано</div><div class="val">${tasks}</div></div></div>
-    <p class="note" style="margin-top:8px">Меню на ${fmtDate(nextMon)}: ${wk ? statusRu[wk.status] : 'не запланировано'}</p>
-    <div class="sub-title">Ближайшие 7 дней</div>
-    ${up.length ? up.map(liRow).join('') : '<div class="empty">Ничего не запланировано</div>'}</div>`;
-}
 
-function quickHtml() {
-  const btn = (act, label) => `<button data-act="${act}">${label}</button>`;
-  return `<div class="quick" role="group" aria-label="Быстрые действия">
-    ${btn('addOp', '+ Расход')}${btn('voiceOp', 'Голосом')}${btn('receiptOp', 'Чек')}${btn('addSteps', 'Шаги')}${btn('addList', 'Список')}</div>`;
-}
 
-export function dashTop() { return quickHtml() + forecastHtml() + reviewHtml(); }
 
-export function feedHtml() {
-  const items = S().log.slice(0, 8);
-  const when = (at) => new Date(at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-  return `<div class="card"><div class="setting-title">Лента</div>
-    ${items.length ? items.map((l) => `<div class="li"><div class="main"><div class="t">${esc(l.text)}</div>
-      <div class="s">${esc(personName(l.personId) || 'Гость')} · ${when(l.at)}</div></div></div>`).join('')
-      : '<div class="empty">Событий пока нет</div>'}</div>`;
-}
 
 // ---------- подушка безопасности (раздел «Цели») ----------
 export function cushionHtml() {
@@ -257,14 +225,9 @@ function reportHtml(month) {
   const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
   const purchases = ((s.menu && s.menu.purchases) || []).filter((p) => p.date.startsWith(month));
   const tasks = s.homeTasks.filter((x) => (x.lastDone || '').startsWith(month)).length;
-  const stepsAvg = s.people.map((p) => {
-    const e = s.steps.filter((x) => x.personId === p.id && x.date.startsWith(month));
-    const avg = e.length ? Math.round(e.reduce((a, x) => a + x.steps, 0) / e.length) : null;
-    return `<div class="cat-row"><span>${esc(p.name)}</span><span></span><span>${avg === null ? '—' : avg.toLocaleString('ru-RU')}</span></div>`;
-  }).join('');
   return `<div class="card report">
     <div class="row" style="justify-content:space-between"><div class="setting-title" style="margin:0">Отчёт за ${monthTitle(month)}</div>
-      <button class="btn soft no-print" data-act="printReport">Печать / PDF</button></div>
+      <button class="btn soft no-print" data-act="shareReport" data-month="${month}">${svg('share', 18)} Отправить</button></div>
     <div class="grid-2" style="margin:12px 0">
       <div class="stat"><div class="lbl">Доходы</div><div class="val pos">${money(income)}</div></div>
       <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(expense)}</div></div></div>
@@ -276,7 +239,7 @@ function reportHtml(month) {
     <div class="sub-title">Продукты и дом</div>
     <div class="cat-row"><span>Закупок по меню</span><span>${purchases.length}</span><span>${money(purchases.reduce((a, p) => a + p.total, 0))}</span></div>
     <div class="cat-row"><span>Дел по дому сделано</span><span></span><span>${tasks}</span></div>
-    <div class="sub-title">Шаги, в среднем в день</div>${stepsAvg}</div>`;
+    </div>`;
 }
 
 // ---------- списки, идеи, подарки, активность ----------
@@ -286,12 +249,14 @@ function checklistCard(coll, obj) {
   return `<div class="card">
     <div class="row" style="justify-content:space-between"><div>
       <div class="setting-title" style="margin:0">${esc(obj.title)}</div><div class="note">${sub}</div></div>
-      <button class="icon-btn" data-act="del" data-coll="${coll}" data-id="${obj.id}" aria-label="Удалить">${X()}</button></div>
+      <span><button class="icon-btn" data-act="listRename" data-id="${obj.id}" aria-label="Переименовать">${svg('edit', 18)}</button>
+      <button class="icon-btn" data-act="del" data-coll="${coll}" data-id="${obj.id}" aria-label="Удалить">${X()}</button></span></div>
     ${obj.note ? `<p class="note" style="margin:6px 0 0">${esc(obj.note)}</p>` : ''}
     <div style="margin-top:6px">${obj.items.map((it) => `<div class="li">
       <button class="icon-btn" data-act="chkToggle" data-coll="${coll}" data-id="${obj.id}" data-iid="${it.id}" aria-label="${it.done ? 'Снять отметку' : 'Отметить'}">${svg(it.done ? 'check' : 'circle', 18)}</button>
       <div class="main"><div class="t" style="${it.done ? 'text-decoration:line-through;opacity:.55' : ''}">${esc(it.text)}</div>
         ${it.by ? `<div class="s">${esc(personName(it.by))}</div>` : ''}</div>
+      <button class="icon-btn" data-act="chkEdit" data-coll="${coll}" data-id="${obj.id}" data-iid="${it.id}" aria-label="Изменить пункт">${svg('edit', 18)}</button>
       <button class="icon-btn" data-act="chkDel" data-coll="${coll}" data-id="${obj.id}" data-iid="${it.id}" aria-label="Удалить пункт">${X()}</button></div>`).join('')}</div>
     <div class="chk-add"><input id="ci_${obj.id}" placeholder="Добавить пункт" aria-label="Новый пункт">
       <button class="btn soft" data-act="chkAdd" data-coll="${coll}" data-id="${obj.id}">Добавить</button></div></div>`;
@@ -304,47 +269,8 @@ export function viewLists() {
       : '<div class="card empty">Списки покупок и дел. Например: продукты, бытовая химия, аптека, ремонт.</div>'}`;
 }
 
-export function viewIdeas() {
-  const list = S().ideas;
-  return `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn" data-act="addIdea">+ Идея</button></div>
-    ${list.length ? list.map((x) => checklistCard('ideas', x)).join('')
-      : '<div class="card empty">Идеи на поездки и выходные: бюджет и чек-лист сборов.</div>'}`;
-}
 
-export function viewGifts() {
-  const list = S().gifts.slice().sort((a, b) => (Number(a.done) - Number(b.done)) || (a.date < b.date ? -1 : 1));
-  return `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn" data-act="addGift">+ Подарок</button></div>
-    ${list.length ? list.map((g) => `<div class="card">
-      <div class="row" style="justify-content:space-between"><div>
-        <div class="setting-title" style="margin:0;${g.done ? 'text-decoration:line-through;opacity:.6' : ''}">${esc(g.title)}</div>
-        <div class="note">${fmtDate(g.date)}${g.budget ? ' · бюджет ' + money(g.budget) : ''}${g.personId ? ' · покупает: ' + esc(personName(g.personId)) : ''}</div></div>
-        <div class="row"><button class="btn soft" data-act="giftDone" data-id="${g.id}">${g.done ? 'Вернуть' : 'Готово'}</button>
-        <button class="icon-btn" data-act="del" data-coll="gifts" data-id="${g.id}" aria-label="Удалить">${X()}</button></div></div>
-      ${g.idea ? `<p class="note" style="margin:8px 0 0">Идеи: ${esc(g.idea)}</p>` : ''}</div>`).join('')
-      : '<div class="card empty">Дни рождения и поводы. За 14 дней до даты придёт напоминание в колокольчике.</div>'}`;
-}
 
-export function viewActivity() {
-  const s = S();
-  const t = today();
-  const days = Array.from({ length: 7 }, (_, i) => addDays(t, -i));
-  const val = (pid, d) => { const e = s.steps.find((x) => x.personId === pid && x.date === d); return e ? e.steps : null; };
-  const head = `<tr><th>День</th>${s.people.map((p) => `<th>${esc(p.name)}</th>`).join('')}</tr>`;
-  const rows = days.map((d) => `<tr><td>${fmtDate(d).slice(0, 5)}</td>${s.people.map((p) => {
-    const v = val(p.id, d);
-    return `<td>${v === null ? '—' : v.toLocaleString('ru-RU')}</td>`;
-  }).join('')}</tr>`).join('');
-  const avgs = s.people.map((p) => {
-    const vals = days.map((d) => val(p.id, d)).filter((v) => v !== null);
-    const avg = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
-    return `${esc(p.name)}: ${avg === null ? 'нет данных' : avg.toLocaleString('ru-RU') + ' шагов'}`;
-  }).join(' · ');
-  return `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn" data-act="addSteps">+ Шаги</button></div>
-    <div class="card"><div class="setting-title">Шаги за 7 дней</div>
-      <table class="tbl"><thead>${head}</thead><tbody>${rows}</tbody></table>
-      <p class="note" style="margin-top:8px">В среднем в день · ${avgs || 'участников нет'}</p></div>
-    <div class="card"><p class="setting-desc">Тренировки пока не ведём: раздел про шаги и прогулки. Расширим, когда появится регулярная активность.</p></div>`;
-}
 
 // ---------- напоминания для колокольчика ----------
 const lastDayOf = (y, m) => new Date(y, m, 0).getDate();
@@ -356,10 +282,6 @@ export function extraReminders(t, days) {
     const d = Math.min(x.day, lastDayOf(yr, x.month));
     const date = `${yr}-${String(x.month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     if (date >= t && date <= addDays(t, days)) out.push({ kind: 'pay', title: x.title, date, amount: x.amount, personId: x.personId });
-  }
-  const horizon = addDays(t, Math.max(days, 14));
-  for (const g of s.gifts) if (!g.done && g.date >= t && g.date <= horizon) {
-    out.push({ kind: 'gift', title: `Подарок: ${g.title}`, date: g.date, personId: g.personId });
   }
   return out;
 }
@@ -466,38 +388,6 @@ export const FEATURE_ADD = {
     S().lists.push({ id: uid(), title: o.title, items: [] });
     return null;
   }),
-  addIdea: () => simpleForm('Новая идея', [
-    { k: 'title', t: 'text', l: 'Название', ph: 'Поездка на море' },
-    { k: 'budget', t: 'number', l: 'Бюджет, ₽' },
-    { k: 'note', t: 'area', l: 'Заметка' }
-  ], (o) => {
-    if (!o.title) return 'Введите название';
-    S().ideas.push({ id: uid(), title: o.title, budget: o.budget || '', note: o.note, items: [] });
-    return null;
-  }),
-  addGift: () => simpleForm('Подарок', [
-    { k: 'title', t: 'text', l: 'Кому и повод', ph: 'Маме, день рождения' },
-    { k: 'date', t: 'date', l: 'Дата', v: today() },
-    { k: 'budget', t: 'number', l: 'Бюджет, ₽' },
-    { k: 'idea', t: 'text', l: 'Идеи' },
-    { k: 'personId', t: 'select', l: 'Кто покупает', opts: personOptsReal(), v: me() }
-  ], (o) => {
-    if (!o.title || !o.date) return 'Укажите кому и дату';
-    S().gifts.push({ id: uid(), title: o.title, date: o.date, budget: o.budget || '', idea: o.idea, personId: o.personId, done: false });
-    return null;
-  }),
-  addSteps: () => simpleForm('Шаги', [
-    { k: 'personId', t: 'select', l: 'Чьи', opts: personOptsReal(), v: me() },
-    { k: 'date', t: 'date', l: 'Дата', v: today() },
-    { k: 'steps', t: 'number', l: 'Количество шагов' }
-  ], (o) => {
-    if (!o.personId) return 'Выберите человека';
-    if (o.steps === '' || o.steps < 0) return 'Введите количество шагов';
-    const ex = S().steps.find((x) => x.personId === o.personId && x.date === o.date);
-    if (ex) ex.steps = o.steps;
-    else S().steps.push({ id: uid(), personId: o.personId, date: o.date, steps: o.steps });
-    return null;
-  }),
   addYearly: () => simpleForm('Ежегодный платёж', [
     { k: 'title', t: 'text', l: 'Название', ph: 'Страховка, налог, подписка' },
     { k: 'amount', t: 'number', l: 'Сумма' },
@@ -562,11 +452,6 @@ export const FEATURE_ACTIONS = {
     const obj = itemOf(d.coll, d.id);
     obj.items = obj.items.filter((x) => x.id !== d.iid);
   },
-  giftDone: (d) => {
-    const g = S().gifts.find((x) => x.id === d.id);
-    g.done = !g.done;
-    if (g.done) logEvent(`Подарок готов: ${g.title}`);
-  },
   printReport: () => { window.print(); return false; }
 };
 
@@ -594,56 +479,18 @@ function eventsOfMonth(ym) {
     const rm = Number(r.date.slice(5, 7));
     const extra = { id: r.id, coll: 'reminders', personId: r.personId };
     if (r.repeat === 'none') {
-      if (r.date.startsWith(ym)) add(r.date, 'rem', r.title, 0, extra);
+      if (r.date.startsWith(ym)) add(r.date, r.cat || 'rem', r.title, 0, extra);
     } else if (r.date.slice(0, 7) <= ym) {
-      if (r.repeat === 'month' || (r.repeat === 'year' && rm === m)) add(at(rd), 'rem', r.title, 0, extra);
+      if (r.repeat === 'month' || (r.repeat === 'year' && rm === m)) add(at(rd), r.cat || 'rem', r.title, 0, extra);
     }
   }
   for (const x of s.recurring) if (x.active) add(at(x.day), 'pay', x.title, x.amount, { personId: x.personId });
   for (const x of s.yearly) if (x.month === m) add(at(x.day), 'pay', x.title, x.amount, { personId: x.personId });
   for (const d of s.debts) if (d.remaining > 0) add(at(d.dueDay || 10), 'pay', `Долг: ${d.title}`, d.monthly);
-  for (const g of s.gifts) if (!g.done && g.date.startsWith(ym)) add(g.date, 'gift', g.title, g.budget || 0, { personId: g.personId });
   for (const i of s.incomes) if (i.active) add(at(i.day), 'income', i.title, i.amount, { id: i.id, coll: 'incomes', personId: i.personId });
   return out;
 }
 
-export function remView() {
-  ensureCalState();
-  const [y, m] = REM_MONTH.split('-').map(Number);
-  const dim = lastDay(y, m);
-  const lead = (new Date(y, m - 1, 1).getDay() + 6) % 7;
-  const byDay = {};
-  for (const e of eventsOfMonth(REM_MONTH)) (byDay[e.date] = byDay[e.date] || []).push(e);
-  const cells = [];
-  for (let i = 0; i < lead; i++) cells.push('<span class="cal-cell cal-empty" aria-hidden="true"></span>');
-  for (let d = 1; d <= dim; d++) {
-    const date = `${REM_MONTH}-${String(d).padStart(2, '0')}`;
-    const list = byDay[date] || [];
-    const kinds = [...new Set(list.map((e) => e.kind))];
-    cells.push(`<button class="cal-cell ${date === today() ? 'is-today' : ''} ${date === REM_DAY ? 'is-sel' : ''}" data-act="remPick" data-day="${date}"
-      aria-label="${fmtDate(date)}, событий: ${list.length}"><span class="cal-num">${d}</span>
-      <span class="cal-dots">${kinds.slice(0, 4).map((k) => `<i class="cal-dot cal-${k}"></i>`).join('')}</span></button>`);
-  }
-  const dayList = byDay[REM_DAY] || [];
-  const legend = Object.entries(KIND_TITLE).map(([k, t]) => `<span class="cal-leg"><i class="cal-dot cal-${k}"></i>${t}</span>`).join('');
-  return `<div class="pl-week-nav">
-      <button class="icon-btn" data-act="remNav" data-d="-1" aria-label="Предыдущий месяц">‹</button>
-      <div class="pl-week-title"><strong style="text-transform:capitalize">${monthTitle(REM_MONTH)}</strong></div>
-      <button class="icon-btn" data-act="remNav" data-d="1" aria-label="Следующий месяц">›</button></div>
-    <div class="cal-legend">${legend}</div>
-    <div class="cal-grid cal-head">${CAL_DOW.map((d) => `<span>${d}</span>`).join('')}</div>
-    <div class="cal-grid">${cells.join('')}</div>
-    <div class="card" style="margin-top:12px">
-      <div class="row" style="justify-content:space-between"><div class="setting-title" style="margin:0">${fmtDate(REM_DAY)}</div>
-        <button class="btn" data-act="remNew">+ Событие</button></div>
-      ${dayList.length ? dayList.map((e) => `<div class="li"><i class="cal-dot cal-${e.kind}"></i>
-        <div class="main"><div class="t">${esc(e.title)}</div>
-        <div class="s">${KIND_TITLE[e.kind]}${e.personId ? ' · ' + esc(personName(e.personId)) : ''}</div></div>
-        ${e.amount ? `<div class="amt">${money(e.amount)}</div>` : ''}
-        ${e.coll ? `<button class="icon-btn" data-act="del" data-coll="${e.coll}" data-id="${e.id}" aria-label="Удалить">${X()}</button>` : ''}</div>`).join('')
-        : '<div class="empty">Событий в этот день нет</div>'}
-    </div>`;
-}
 
 // ---------- регулярные поступления (зарплата и т.п.) ----------
 export function incomeTabHtml(month) {
@@ -694,10 +541,11 @@ export const EXTRA_ADD = {
     { k: 'title', t: 'text', l: 'Что напомнить' },
     { k: 'date', t: 'date', l: 'Дата', v: REM_DAY || today() },
     { k: 'repeat', t: 'select', l: 'Повтор', opts: [['none', 'однократно'], ['month', 'каждый месяц'], ['year', 'каждый год']], v: 'none' },
-    { k: 'personId', t: 'select', l: 'Для кого', opts: [['', 'Общее'], ...personOptsReal()], v: '' }
+    { k: 'personId', t: 'select', l: 'Для кого', opts: [['', 'Общее'], ...personOptsReal()], v: '' },
+    { k: 'cat', t: 'select', l: 'Категория', opts: remCatList().map((c) => [c.id, c.name]), v: 'rem' }
   ], (o) => {
     if (!o.title || !o.date) return 'Введите название и дату';
-    S().reminders.push({ id: uid(), title: o.title, date: o.date, repeat: o.repeat, personId: o.personId });
+    S().reminders.push({ id: uid(), title: o.title, date: o.date, repeat: o.repeat, personId: o.personId, cat: o.cat || 'rem' });
     REM_DAY = o.date;
     REM_MONTH = o.date.slice(0, 7);
     return null;
@@ -738,4 +586,157 @@ export const EXTRA_ACTIONS = {
     return false;
   },
   incSkip: (d) => { S().incomeConfirmed[`${d.id}|${d.ym}`] = { status: 'skip', at: today() }; }
+};
+
+// Календарь напоминаний: категории задают цвет и видимость событий.
+export function remView() {
+  ensureCalState();
+  const cats = remCatList();
+  const colorOf = (id) => (['rem', 'pay', 'income', 'bday'].includes(id) ? `cal-${id}` : 'cal-custom');
+  const nameOf = (id) => (cats.find((c) => c.id === id) || {}).name || '';
+  const [y, m] = REM_MONTH.split('-').map(Number);
+  const dim = lastDay(y, m);
+  const lead = (new Date(y, m - 1, 1).getDay() + 6) % 7;
+  const enabled = new Set(cats.filter((c) => c.on).map((c) => c.id));
+  const byDay = {};
+  for (const e of eventsOfMonth(REM_MONTH)) if (enabled.has(e.kind)) (byDay[e.date] = byDay[e.date] || []).push(e);
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push('<span class="cal-cell cal-empty" aria-hidden="true"></span>');
+  for (let d = 1; d <= dim; d++) {
+    const date = `${REM_MONTH}-${String(d).padStart(2, '0')}`;
+    const list = byDay[date] || [];
+    const kinds = [...new Set(list.map((e) => e.kind))];
+    cells.push(`<button class="cal-cell ${date === today() ? 'is-today' : ''} ${date === REM_DAY ? 'is-sel' : ''}" data-act="remPick" data-day="${date}"
+      aria-label="${fmtDate(date)}, событий: ${list.length}"><span class="cal-num">${d}</span>
+      <span class="cal-dots">${kinds.slice(0, 4).map((k) => `<i class="cal-dot ${colorOf(k)}"></i>`).join('')}</span></button>`);
+  }
+  const dayList = byDay[REM_DAY] || [];
+  const legend = cats.filter((c) => c.on).map((c) => `<span class="cal-leg"><i class="cal-dot ${colorOf(c.id)}"></i>${esc(c.name)}</span>`).join('');
+  return `<div class="pl-week-nav">
+      <button class="icon-btn" data-act="remNav" data-d="-1" aria-label="Предыдущий месяц">‹</button>
+      <div class="pl-week-title"><strong style="text-transform:capitalize">${monthTitle(REM_MONTH)}</strong></div>
+      <button class="icon-btn" data-act="remNav" data-d="1" aria-label="Следующий месяц">›</button></div>
+    <div class="cal-legend">${legend}</div>
+    <div class="cal-grid cal-head">${CAL_DOW.map((d) => `<span>${d}</span>`).join('')}</div>
+    <div class="cal-grid">${cells.join('')}</div>
+    <div class="card" style="margin-top:12px">
+      <div class="row" style="justify-content:space-between"><div class="setting-title" style="margin:0">${fmtDate(REM_DAY)}</div>
+        <button class="btn" data-act="remNew">+ Событие</button></div>
+      ${dayList.length ? dayList.map((e) => `<div class="li"><i class="cal-dot ${colorOf(e.kind)}"></i>
+        <div class="main"><div class="t">${esc(e.title)}</div>
+        <div class="s">${esc(nameOf(e.kind))}${e.personId ? ' · ' + esc(personName(e.personId)) : ''}</div></div>
+        ${e.amount ? `<div class="amt">${money(e.amount)}</div>` : ''}
+        ${e.coll ? `<button class="icon-btn" data-act="del" data-coll="${e.coll}" data-id="${e.id}" aria-label="Удалить">${X()}</button>` : ''}</div>`).join('')
+        : '<div class="empty">Событий в этот день нет</div>'}
+    </div>`;
+}
+
+export const EXTRA_ACTIONS_ALL = { ...EXTRA_ACTIONS, ...EXTRA_CATS_ACTIONS };
+
+// ---------- категории напоминаний и итоговый блок главной ----------
+const BUILTIN_CATS = ['rem', 'pay', 'income', 'bday'];
+export const REM_CATS_DEFAULT = () => [
+  { id: 'rem', name: 'Напоминание', on: true },
+  { id: 'pay', name: 'Платежи', on: true },
+  { id: 'income', name: 'Поступления', on: true },
+  { id: 'bday', name: 'День рождения', on: true }
+];
+const remCatList = () => S().remCats || REM_CATS_DEFAULT();
+
+export function remCatsSettingsHtml() {
+  const cats = remCatList();
+  return `<div class="card"><div class="setting-title">Категории напоминаний</div>
+    <p class="setting-desc">Выключенная категория скрывается из календаря и колокольчика. Можно добавлять свои категории.</p>
+    ${cats.map((c) => `<div class="li">
+      <input type="checkbox" id="rco_${c.id}" ${c.on ? 'checked' : ''} aria-label="Показывать: ${esc(c.name)}">
+      <div class="main"><input id="rc_${c.id}" value="${esc(c.name)}" aria-label="Название категории"></div>
+      ${BUILTIN_CATS.includes(c.id) ? '' : `<button class="icon-btn" data-act="remCatDel" data-id="${c.id}" aria-label="Удалить категорию">${X()}</button>`}</div>`).join('')}
+    <div class="row" style="margin-top:10px"><input id="rc_new" placeholder="Например, «Вывоз мусора»" aria-label="Новая категория" style="flex:1;min-width:0">
+      <button class="btn soft" data-act="remCatAdd">Добавить</button></div>
+    <div class="pill-row" style="margin-top:10px"><button class="btn" data-act="remCatSave">Сохранить категории</button></div></div>`;
+}
+
+export function dashTop() {
+  const t = today();
+  const month = t.slice(0, 7);
+  const s = S();
+  const monthOps = visible().filter((o) => o.date.startsWith(month));
+  const income = sumInc(monthOps);
+  const expense = sumExp(monthOps);
+  const dailyAvg = sumExp(visible().filter((o) => !o.fromRecurring && o.date > addDays(t, -31) && o.date <= t)) / 30;
+  const [y, m] = month.split('-').map(Number);
+  const dayNow = Number(t.slice(8));
+  const left = lastDay(y, m) - dayNow;
+  const unpaid = s.recurring.filter((r) => r.active && !s.confirmed[`${r.id}|${month}`]).reduce((a, r) => a + (Number(r.amount) || 0), 0);
+  const yearlyLeft = s.yearly.filter((x) => x.month === m && x.day > dayNow).reduce((a, x) => a + (Number(x.amount) || 0), 0);
+  const end = expense + unpaid + yearlyLeft + dailyAvg * left;
+  return `<div class="card money-main">
+    <div class="row" style="justify-content:space-between"><div class="setting-title" style="margin:0">Доходы и расходы</div>
+      <span class="note">${monthTitle(month)}</span></div>
+    <div class="grid-2" style="margin-top:10px">
+      <div class="stat"><div class="lbl">Доходы</div><div class="val pos">${money(income)}</div></div>
+      <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(expense)}</div></div></div>
+    <div class="forecast-row"><div><div class="lbl">Прогноз расходов к концу месяца</div>
+      <div class="note">запланировано ещё ${money(unpaid + yearlyLeft)}, плюс среднее за 30 дней × ${left} дн.</div></div>
+      <b>≈ ${money(end)}</b></div></div>`;
+}
+
+function reportText(month) {
+  const ops = visible().filter((o) => o.date.startsWith(month));
+  const byCat = {};
+  for (const o of ops.filter((x) => x.type !== 'income')) byCat[o.category] = (byCat[o.category] || 0) + (Number(o.amount) || 0);
+  const lines = Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([c, v]) => `• ${c}: ${money(v)}`);
+  return [`Отчёт за ${monthTitle(month)}`, `Доходы: ${money(sumInc(ops))}`, `Расходы: ${money(sumExp(ops))}`, ...lines].join('\n');
+}
+
+export const EXTRA_CATS_ACTIONS = {
+  remCatSave: () => {
+    const cats = remCatList();
+    for (const c of cats) {
+      const name = (document.getElementById('rc_' + c.id)?.value || '').trim();
+      if (name) c.name = name;
+      const cb = document.getElementById('rco_' + c.id);
+      if (cb) c.on = cb.checked;
+    }
+    S().remCats = cats;
+    F.toast('Категории сохранены');
+  },
+  remCatAdd: () => {
+    const name = (document.getElementById('rc_new')?.value || '').trim();
+    if (!name) return false;
+    S().remCats = [...remCatList(), { id: 'c' + uid(), name, on: true }];
+  },
+  remCatDel: (d) => {
+    S().remCats = remCatList().filter((c) => c.id !== d.id);
+    for (const r of S().reminders) if (r.cat === d.id) r.cat = 'rem';
+  },
+  listRename: (d) => {
+    const obj = itemOf('lists', d.id);
+    F.openForm('Переименовать список', [{ k: 'title', t: 'text', l: 'Название', v: obj.title }], (o) => {
+      if (!o.title) return 'Введите название';
+      obj.title = o.title;
+      return null;
+    });
+    return false;
+  },
+  chkEdit: (d) => {
+    const obj = itemOf(d.coll, d.id);
+    const it = obj.items.find((x) => x.id === d.iid);
+    F.openForm('Изменить пункт', [{ k: 'text', t: 'text', l: 'Пункт', v: it.text }], (o) => {
+      if (!o.text) return 'Введите текст';
+      it.text = o.text;
+      return null;
+    });
+    return false;
+  },
+  shareReport: async (d) => {
+    const text = reportText(d.month);
+    const title = `Отчёт ${d.month}`;
+    if (navigator.share) {
+      try { await navigator.share({ title, text }); } catch { /* отменено пользователем */ }
+    } else {
+      try { await navigator.clipboard.writeText(text); F.toast('Отчёт скопирован'); } catch { F.toast('Не удалось отправить'); }
+    }
+    return false;
+  }
 };
