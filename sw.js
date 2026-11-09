@@ -1,6 +1,6 @@
 // Офлайн-режим: оболочка приложения хранится в кэше.
 // Сеть — в приоритете (свежие файлы), кэш — если сети нет.
-const CACHE = 'assistant-v17';
+const CACHE = 'assistant-v18';
 const SHELL = [
   './', 'index.html', 'style.css', 'app.js', 'core.js',
   'menu/planner.js', 'menu/planner.css', 'features.js', 'features.css', 'sync.js', 'config.js', 'data.json',

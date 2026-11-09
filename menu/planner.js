@@ -59,6 +59,24 @@ function fmtQty(v, unit) {
   return `${String(Math.round(v * 10) / 10).replace('.', ',')} ${unit}`;
 }
 const itemKey = (i) => `${i.name.toLowerCase()}|${i.unit}`;
+const packKeyOf = (name) => name.toLowerCase().trim();
+const scopeObj = (scope) => (scope.startsWith('long:') ? monthRec(scope.slice(5)).long : weekOf(scope));
+// Сколько упаковок купить: количество из списка переводится в единицы упаковки.
+function packLine(i, q) {
+  const p = (M().packs || {})[packKeyOf(i.name)];
+  if (!p) return null;
+  if (q <= 0) return { text: 'покупать не нужно' };
+  let need = q;
+  if (i.unit !== p.unit) {
+    if (i.unit === 'ст. ложки' && p.gPerSpoon) need = q * p.gPerSpoon;
+    else if (i.unit === 'ст. ложки') return { text: 'укажите вес одной ст. ложки', warn: true };
+    else return { text: `упаковка в «${p.unit}», в меню «${i.unit}»`, warn: true };
+  }
+  const count = Math.ceil(need / p.size - 1e-9);
+  return { text: `купить: ${count} ${p.packName} · ${fmtQty(p.size, p.unit)}` };
+}
+const keptQty = (old, items) => Object.fromEntries(Object.entries(old || {})
+  .filter(([k]) => items.some((i) => itemKey(i) === k)));
 
 // ---------- данные ----------
 const M = () => ctx.S().menu;
@@ -146,7 +164,7 @@ function confirmMonth(ym) {
   m.status = 'confirmed';
   m.dirty = false;
   m.longBought = false;
-  m.long = { items: aggregate(monthDays(ym), isLong), checked: {} };
+  m.long = { items: aggregate(monthDays(ym), isLong), checked: {}, qty: {} };
   for (const mon of monthWeeks(ym)) {
     const w = weekOf(mon);
     if (w.status === 'bought') continue;
@@ -154,6 +172,7 @@ function confirmMonth(ym) {
     w.listDirty = false;
     w.list = weeklyItems(mon);
     w.checked = {};
+    w.qty = {};
   }
 }
 
@@ -161,7 +180,7 @@ function refreshMonth(ym) {
   const m = monthRec(ym);
   if (m.status !== 'confirmed') return;
   const longItems = aggregate(monthDays(ym), isLong);
-  m.long = { items: longItems, checked: keptChecks((m.long || {}).checked, longItems) };
+  m.long = { items: longItems, checked: keptChecks((m.long || {}).checked, longItems), qty: keptQty((m.long || {}).qty, longItems) };
   m.dirty = false;
   for (const mon of monthWeeks(ym)) {
     const w = weekOf(mon);
@@ -169,6 +188,7 @@ function refreshMonth(ym) {
     const items = weeklyItems(mon);
     w.list = items;
     w.checked = keptChecks(w.checked, items);
+    w.qty = keptQty(w.qty, items);
     w.listDirty = false;
   }
 }
@@ -185,11 +205,12 @@ function unlockMonth(ym) {
   for (const mon of weeks) {
     const w = M().weeks[mon];
     if (!w || (w.status !== 'confirmed' && w.status !== 'bought')) continue;
-    if (w.status === 'bought') { w.status = 'draft'; delete w.list; delete w.checked; delete w.purchaseId; continue; }
+    if (w.status === 'bought') { w.status = 'draft'; delete w.list; delete w.checked; delete w.qty; delete w.purchaseId; continue; }
     if (weekDays(mon).some((d) => monthConfirmed(d.slice(0, 7)))) { w.list = weeklyItems(mon); continue; }
     w.status = 'draft';
     delete w.list;
     delete w.checked;
+    delete w.qty;
   }
   return null;
 }
@@ -369,12 +390,26 @@ function purchaseBtn(label, target) {
   return `<button class="btn block" data-mact="${target.act}" ${target.attrs}>${label}</button>`;
 }
 
-function checksList(scope, items, checked) {
-  return items.map((i) => `<label class="item ${checked[itemKey(i)] ? 'done' : ''}">
-    <input type="checkbox" data-mcheck="${esc(itemKey(i))}" data-scope="${esc(scope)}" ${checked[itemKey(i)] ? 'checked' : ''}>
-    <span class="box">✓</span>
-    <span class="txt"><span class="nm">${esc(i.name)}</span><div class="qty">${esc(fmtQty(i.total, i.unit))}</div></span>
-  </label>`).join('');
+function checksList(scope, items, checked, qty = {}) {
+  return items.map((i) => {
+    const k = itemKey(i);
+    const q = qty[k] ?? i.total;
+    const done = !!checked[k];
+    const pl = packLine(i, q);
+    const hasPack = !!(M().packs || {})[packKeyOf(i.name)];
+    return `<div class="item-row">
+    <label class="item ${done ? 'done' : ''}">
+      <input type="checkbox" data-mcheck="${esc(k)}" data-scope="${esc(scope)}" ${done ? 'checked' : ''}>
+      <span class="box">✓</span>
+      <span class="txt"><span class="nm">${esc(i.name)}</span>
+        ${pl ? `<div class="qty ${pl.warn ? 'warn' : ''}">${esc(pl.text)}</div>` : ''}</span>
+    </label>
+    <div class="item-tools">
+      <input type="number" class="qin" inputmode="decimal" step="any" min="0" value="${q}" data-qty="${esc(k)}" data-scope="${esc(scope)}" aria-label="Количество: ${esc(i.name)}">
+      <span class="qunit">${esc(i.unit)}</span>
+      <button class="pack-btn" data-pack="${esc(i.name)}" data-unit="${esc(i.unit)}">${hasPack ? 'упаковка' : '+ упаковка'}</button>
+    </div></div>`;
+  }).join('');
 }
 
 let SHOP_TAB = null;
@@ -393,7 +428,7 @@ function longCardHtml(ym, m) {
     ${m.longBought ? '<p class="note">Запас куплен и сохранён в операции.</p>'
       : `${longItems.length ? Object.keys(CATS).filter((c) => longGroups[c]).map((c) => `
           <div class="sub-title"><span class="leg-dot" style="background:${CAT_COLOR[c]}"></span> ${esc(CATS[c])}</div>
-          ${checksList(`long:${ym}`, longGroups[c], longChecked)}`).join('')
+          ${checksList(`long:${ym}`, longGroups[c], longChecked, (m.long && m.long.qty) || {})}`).join('')
         : '<div class="empty">В меню нет товаров длительного хранения</div>'}
       ${longItems.length ? `<div style="margin-top:12px">${purchaseBtn('Запас куплен', { act: 'buy-long', attrs: `data-ym="${ym}"` })}</div>` : ''}`}
   </div>`;
@@ -412,7 +447,7 @@ function weekCardHtml(mon, w) {
       ${w.listDirty ? '<div class="warn-box">Меню этой недели изменили. Обновите списки во вкладке «План».</div>' : ''}
       ${w.list.length ? Object.keys(CATS).filter((c) => groups[c]).map((c) => `
         <div class="sub-title"><span class="leg-dot" style="background:${CAT_COLOR[c]}"></span> ${esc(CATS[c])}</div>
-        ${checksList(mon, groups[c], checked)}`).join('')
+        ${checksList(mon, groups[c], checked, w.qty || {})}`).join('')
         : '<div class="empty">На эту неделю продуктов нет</div>'}
       ${bought ? '' : `<div style="margin-top:12px">${purchaseBtn('Закупка сделана', { act: 'buy-week', attrs: `data-mon="${mon}"` })}</div>`}
     </div>`;
@@ -436,7 +471,7 @@ function shopHtml() {
   const activeId = cards.some((c) => c.id === SHOP_TAB) ? SHOP_TAB : (todayWeek || cards[0]).id;
   const active = cards.find((c) => c.id === activeId);
   const tabs = `<div class="shop-tabs" role="tablist">${cards.map((c) => `<button role="tab" aria-selected="${c.id === activeId}" class="${c.id === activeId ? 'active' : ''}" data-stab="${esc(c.id)}">${esc(c.label)}</button>`).join('')}</div>`;
-  return tabs + active.html;
+  return tabs + '<p class="note" style="margin:8px 2px">Количество можно поправить прямо в списке. Очистите поле, чтобы вернуть расчёт по меню.</p>' + active.html;
 }
 
 
@@ -649,6 +684,41 @@ function savePurchase({ date, store, total, items, method }) {
   ctx.render();
 }
 
+// ---------- упаковки ----------
+function openPackForm(name, unit) {
+  const key = packKeyOf(name);
+  const p = (M().packs || {})[key] || {};
+  const units = [...new Set(['г', 'мл', 'шт', unit, p.unit].filter(Boolean))];
+  ctx.openModal(`Упаковка · ${name}`, `
+    <p class="setting-desc">Продукты покупаем упаковками. Список покажет, сколько упаковок купить.</p>
+    <div class="pk-field"><span>Название упаковки</span>
+      <input id="pk-name" value="${esc(p.packName || 'упаковка')}"></div>
+    <div class="pk-field"><span>Вес или объём одной упаковки</span>
+      <div class="pk-row"><input id="pk-size" inputmode="decimal" placeholder="например 1000" value="${p.size ?? ''}">
+      <select id="pk-unit">${units.map((u) => `<option value="${esc(u)}" ${(p.unit || unit) === u ? 'selected' : ''}>${esc(u)}</option>`).join('')}</select></div></div>
+    <div class="pk-field"><span>Вес одной ст. ложки, г (нужен, если в рецепте ложки)</span>
+      <input id="pk-spoon" inputmode="decimal" placeholder="например 15" value="${p.gPerSpoon ?? ''}"></div>
+    <p class="setting-desc">Оставьте вес пустым, чтобы убрать упаковку.</p>
+    <div style="margin-top:12px"><button class="btn block" id="pk-save">Сохранить</button></div>`);
+  document.querySelector('#pk-save').onclick = () => {
+    const num = (v) => { const x = parseFloat(String(v).replace(',', '.')); return isNaN(x) ? 0 : x; };
+    const size = num(document.querySelector('#pk-size').value);
+    M().packs ||= {};
+    if (size <= 0) delete M().packs[key];
+    else {
+      M().packs[key] = {
+        packName: document.querySelector('#pk-name').value.trim() || 'упаковка',
+        size,
+        unit: document.querySelector('#pk-unit').value,
+        gPerSpoon: num(document.querySelector('#pk-spoon').value) || null
+      };
+    }
+    ctx.closeModal();
+    ctx.toast('Упаковка сохранена');
+    ctx.render();
+  };
+}
+
 // ---------- библиотека блюд ----------
 function dishFormHtml(d) {
   const ing = d ? d.ingredients : [];
@@ -780,12 +850,23 @@ export function plannerBind() {
   root.querySelectorAll('[data-mcheck]').forEach((c) => {
     c.onchange = () => {
       const scope = c.dataset.scope;
-      const obj = scope.startsWith('long:') ? monthRec(scope.slice(5)).long : weekOf(scope);
+      const obj = scopeObj(scope);
       obj.checked = obj.checked || {};
       if (c.checked) obj.checked[c.dataset.mcheck] = true; else delete obj.checked[c.dataset.mcheck];
       ctx.render();
     };
   });
+  root.querySelectorAll('[data-qty]').forEach((inp) => {
+    inp.onchange = () => {
+      const obj = scopeObj(inp.dataset.scope);
+      obj.qty = obj.qty || {};
+      const v = parseFloat(String(inp.value).replace(',', '.'));
+      if (inp.value.trim() === '' || isNaN(v)) delete obj.qty[inp.dataset.qty];
+      else obj.qty[inp.dataset.qty] = Math.max(0, Math.round(v * 100) / 100);
+      ctx.render();
+    };
+  });
+  root.querySelectorAll('[data-pack]').forEach((b) => { b.onclick = () => openPackForm(b.dataset.pack, b.dataset.unit); });
   root.querySelectorAll('[data-lfilter]').forEach((b) => { b.onclick = () => { libFilter = b.dataset.lfilter; ctx.render(); }; });
   const q = root.querySelector('#lib-q');
   if (q) q.oninput = () => {

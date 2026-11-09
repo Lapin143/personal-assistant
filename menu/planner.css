@@ -70,3 +70,16 @@
 .pl-week summary::-webkit-details-marker{display:none}
 .pl-week summary > span:first-child{flex:1 1 220px;min-width:0}
 .pl-week summary .note{white-space:nowrap}
+.shop-card .item-row{display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--row-line)}
+.shop-card .item-row:last-child{border-bottom:0}
+.shop-card .item-row .item{flex:1;min-width:0;border-bottom:0;padding:10px 0}
+.shop-card .item-tools{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.shop-card .qin{width:72px;padding:8px;border-radius:10px;border:1px solid var(--row-line);background:var(--surface);color:inherit;font:inherit;text-align:right}
+.shop-card .qunit{font-size:12px;color:var(--sub);min-width:0;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pack-btn{background:var(--chip);color:#2f5d50;border:0;border-radius:999px;padding:7px 10px;font:inherit;font-size:12px;font-weight:700;min-height:36px;cursor:pointer;white-space:nowrap}
+.shop-card .qty.warn{color:#9a5b00;font-weight:600}
+.pk-field{display:grid;gap:4px;margin-top:10px;font-size:14px;font-weight:600}
+.pk-field > span{color:var(--sub)}
+.pk-field input,.pk-field select{width:100%;padding:10px;border-radius:10px;border:1px solid var(--row-line);background:var(--surface);color:inherit;font:inherit}
+.pk-row{display:grid;grid-template-columns:1fr 110px;gap:8px}
+[data-theme="dark"] .pack-btn{background:#22302b;color:#a9d8c4}
