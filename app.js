@@ -762,6 +762,12 @@ async function init() {
       write('as.data', S);
     }
     if (!S.menu) S.menu = structuredClone(base.menu);
+    else if ((S.menu.seedVersion || 0) < (base.menu.seedVersion || 0)) {
+      // Новые блюда из data.json добавляются к уже сохранённой библиотеке (по названию, без дублей).
+      const have = new Set((S.menu.dishes || []).map((d) => d.name));
+      S.menu.dishes = [...(S.menu.dishes || []), ...base.menu.dishes.filter((d) => !have.has(d.name))];
+      S.menu.seedVersion = base.menu.seedVersion;
+    }
     featuresInit({
       S: () => S, me: () => ME, esc, money, uid, todayIso, toast, svg, personOpts, personName,
       save, render: () => { save(); render(); }, openForm, openModal: plannerCtx.openModal, closeModal,
