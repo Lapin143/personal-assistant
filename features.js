@@ -604,6 +604,7 @@ export function incomeTabHtml(month) {
       <div class="main"><div class="t">${esc(i.title)}${i.active ? '' : ' · на паузе'}</div>
       <div class="s">${i.day}-го числа${i.personId ? ' · ' + esc(personName(i.personId)) : ''}</div></div>
       <div class="amt inc">+${money(i.amount)}</div>
+      <button class="icon-btn" data-act="editInc" data-id="${i.id}" aria-label="Изменить">${svg('edit', 18)}</button>
       <button class="icon-btn" data-act="incToggle" data-id="${i.id}" aria-label="${i.active ? 'Пауза' : 'Возобновить'}">${svg(i.active ? 'pause' : 'play', 18)}</button>
       <button class="icon-btn" data-act="del" data-coll="incomes" data-id="${i.id}" aria-label="Удалить">${X()}</button></div>`).join('')
       : '<div class="empty">Поступлений пока нет</div>'}
@@ -667,6 +668,24 @@ export const EXTRA_ACTIONS = {
   remNav: (d) => { ensureCalState(); REM_MONTH = shiftYm(REM_MONTH, Number(d.d)); },
   remPick: (d) => { REM_DAY = d.day; REM_MONTH = d.day.slice(0, 7); },
   incToggle: (d) => { const i = S().incomes.find((x) => x.id === d.id); i.active = !i.active; },
+  editInc: (d) => {
+    const i = S().incomes.find((x) => x.id === d.id);
+    if (!i) return false;
+    F.openForm('Регулярное поступление', [
+      { k: 'title', t: 'text', l: 'Название', v: i.title },
+      { k: 'amount', t: 'number', l: 'Сумма', v: i.amount },
+      { k: 'day', t: 'number', l: 'День месяца (1–31)', v: i.day },
+      { k: 'category', t: 'select', l: 'Категория', opts: S().categories.income.map((c) => [c, c]), v: i.category },
+      { k: 'account', t: 'select', l: 'Счёт', opts: S().accounts.map((a) => [a.id, a.name]), v: i.account },
+      { k: 'personId', t: 'select', l: 'Чьё', opts: personOptsReal(), v: i.personId || '' }
+    ], (o) => {
+      if (!o.title || o.amount === '' || o.amount <= 0) return 'Заполните название и сумму';
+      Object.assign(i, { title: o.title, amount: o.amount, day: Math.min(31, Math.max(1, Number(o.day) || 1)),
+        category: o.category, account: o.account, personId: o.personId });
+      return null;
+    });
+    return false;
+  },
   incConfirm: (d) => {
     const i = S().incomes.find((x) => x.id === d.id);
     F.openForm(`Поступление: ${i.title}`, [

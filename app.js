@@ -1,7 +1,7 @@
 import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b9';
 import { featuresInit, budgetSettingsHtml, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, extraReminders,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
-  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=b17';
+  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=b18';
 import { pullRemote, queuePush, authEnabled, signIn, signOutLocal, validToken, getSession } from './sync.js?v=b3';
 import { iso, todayIso, addDays, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js';
 
@@ -169,13 +169,13 @@ function pendingPayments(today = todayIso()) {
     .map((r) => ({ r, ym, date: dueDateOf(r, ym) }));
 }
 
-function resolvePayment(rid, ym, status) {
+function resolvePayment(rid, ym, status, fact = {}) {
   const r = S.recurring.find((x) => x.id === rid);
   if (!r) return;
   S.confirmed = S.confirmed || {};
   if (status === 'ok') {
     S.transactions.push({
-      id: uid(), type: 'expense', amount: r.amount, date: dueDateOf(r, ym), category: r.category || 'Прочее',
+      id: uid(), type: 'expense', amount: fact.amount ?? r.amount, date: fact.date || dueDateOf(r, ym), category: r.category || 'Прочее',
       account: r.account || '', personId: r.personId || '', private: false,
       note: `Регулярный: ${r.title}`, fromRecurring: r.id
     });
@@ -249,6 +249,7 @@ function viewFin() {
         <div class="main"><div class="t">${esc(r.title)}${r.personId ? `<span class="badge-private">${esc(personName(r.personId))}</span>` : ''}</div>
         <div class="s">${r.day}-го числа · ${esc(r.category || '')}${r.active ? '' : ' · на паузе'}</div></div>
         <div class="amt">${money(r.amount)}</div>
+        <button class="icon-btn" data-act="editRec" data-id="${r.id}" aria-label="Изменить">${svg('edit', 18)}</button>
         <button class="icon-btn" data-act="toggleRec" data-id="${r.id}" aria-label="${r.active ? 'Пауза' : 'Возобновить'}">${svg(r.active ? 'pause' : 'play', 18)}</button>
         <button class="icon-btn" data-act="del" data-coll="recurring" data-id="${r.id}" aria-label="Удалить">${X}</button></div>`).join('')
         : '<div class="empty">Регулярных платежей нет</div>'}
@@ -605,7 +606,39 @@ const ACTIONS = {
     S[d.coll] = S[d.coll].filter((x) => x.id !== d.id);
   },
   toggleRec: (d) => { const r = S.recurring.find((x) => x.id === d.id); r.active = !r.active; },
-  payOk: (d) => { resolvePayment(d.id, d.ym, 'ok'); logEvent('Проведён регулярный платёж'); refreshBellIfOpen(); },
+  editRec: (d) => {
+    const r = S.recurring.find((x) => x.id === d.id);
+    if (!r) return false;
+    openForm('Регулярный платёж', [
+      { k: 'title', t: 'text', l: 'Название', v: r.title },
+      { k: 'amount', t: 'number', l: 'Сумма в месяц', v: r.amount },
+      { k: 'day', t: 'number', l: 'День месяца (1–31)', v: r.day },
+      { k: 'category', t: 'select', l: 'Категория', opts: catAll(), v: r.category },
+      { k: 'account', t: 'select', l: 'Счёт', opts: accOpts(), v: r.account },
+      { k: 'personId', t: 'select', l: 'Чей', opts: personOpts(), v: r.personId || '' }
+    ], (o) => {
+      if (!o.title || !need(o, ['amount', 'day'])) return 'Заполните название, сумму и день';
+      Object.assign(r, { title: o.title, amount: o.amount, day: Math.min(31, Math.max(1, o.day)),
+        category: o.category, account: o.account, personId: o.personId });
+      return null;
+    });
+    return false;
+  },
+  payOk: (d) => {
+    const r = S.recurring.find((x) => x.id === d.id);
+    if (!r) return false;
+    openForm(`Платёж: ${r.title}`, [
+      { k: 'amt', t: 'number', l: 'Сумма, которая списалась', v: r.amount },
+      { k: 'date', t: 'date', l: 'Дата платежа', v: dueDateOf(r, d.ym) }
+    ], (o) => {
+      if (!o.amt || o.amt <= 0) return 'Введите сумму';
+      resolvePayment(d.id, d.ym, 'ok', { amount: o.amt, date: o.date || dueDateOf(r, d.ym) });
+      logEvent('Проведён регулярный платёж');
+      refreshBellIfOpen();
+      return null;
+    });
+    return false;
+  },
   paySkip: (d) => { resolvePayment(d.id, d.ym, 'skip'); refreshBellIfOpen(); },
   wishBought: (d) => { const w = S.wishes.find((x) => x.id === d.id); w.bought = !w.bought; },
   topUp: (d) => {
