@@ -4,6 +4,9 @@
 import { SUPABASE } from './config.js';
 
 const ROW_ID = 'family';
+const TIMEOUT = 6000; // если сервер недоступен, не ждём дольше
+const net = (url, opts = {}) => fetch(url, { ...opts, signal: AbortSignal.timeout(TIMEOUT) });
+const isNetErr = (err) => err instanceof TypeError || err.name === 'AbortError' || err.name === 'TimeoutError';
 const SESSION_KEY = 'as.session';
 
 export const authEnabled = () => Boolean(SUPABASE.url && SUPABASE.key);
@@ -15,7 +18,7 @@ const saveSession = (s) => localStorage.setItem(SESSION_KEY, JSON.stringify(s));
 export const signOutLocal = () => localStorage.removeItem(SESSION_KEY);
 
 async function authRequest(path, body) {
-  const res = await fetch(`${SUPABASE.url}/auth/v1/${path}`, {
+  const res = await net(`${SUPABASE.url}/auth/v1/${path}`, {
     method: 'POST',
     headers: { apikey: SUPABASE.key, 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -46,7 +49,7 @@ export async function validToken() {
     saveSession(toSession(await authRequest('token?grant_type=refresh_token', { refresh_token: s.refresh_token })));
     return getSession().access_token;
   } catch (err) {
-    if (err instanceof TypeError) return s.access_token; // нет сети
+    if (isNetErr(err)) return s.access_token; // нет сети или сервер недоступен
     signOutLocal();
     return null;
   }
@@ -58,7 +61,7 @@ export async function pullRemote() {
   if (!authEnabled()) return null;
   const token = await validToken();
   if (!token) throw new Error('нет входа');
-  const res = await fetch(`${SUPABASE.url}/rest/v1/family_data?id=eq.${ROW_ID}&select=payload,updated_at`,
+  const res = await net(`${SUPABASE.url}/rest/v1/family_data?id=eq.${ROW_ID}&select=payload,updated_at`,
     { headers: headers(token), cache: 'no-store' });
   if (!res.ok) throw new Error(`sync pull ${res.status}`);
   return (await res.json())[0] || null;
@@ -81,7 +84,7 @@ async function pushNow() {
   if (!data) return;
   const token = await validToken();
   if (!token) return;
-  const res = await fetch(`${SUPABASE.url}/rest/v1/family_data`, {
+  const res = await net(`${SUPABASE.url}/rest/v1/family_data`, {
     method: 'POST',
     headers: { ...headers(token), Prefer: 'resolution=merge-duplicates' },
     body: JSON.stringify([{ id: ROW_ID, payload: data, updated_at: data.updatedAt || Date.now() }])

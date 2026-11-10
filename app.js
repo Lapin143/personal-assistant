@@ -2,7 +2,7 @@ import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './men
 import { featuresInit, budgetSettingsHtml, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, extraReminders,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
   remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=b18';
-import { pullRemote, queuePush, authEnabled, signIn, signOutLocal, validToken, getSession } from './sync.js?v=b3';
+import { pullRemote, queuePush, authEnabled, signIn, signOutLocal, validToken, getSession } from './sync.js?v=b4';
 import { iso, todayIso, addDays, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js';
 
 // ---------- помощники ----------
@@ -762,7 +762,7 @@ function showLogin() {
       await signIn(email, password);
       location.reload();
     } catch (e) {
-      const text = e instanceof TypeError ? 'Нет связи с сервером. Проверьте интернет.' : (LOGIN_ERRORS[e.message] || e.message);
+      const text = e instanceof TypeError || e.name === 'TimeoutError' ? 'Нет связи с сервером. Проверьте интернет; при блокировке сервера для входа нужен VPN.' : (LOGIN_ERRORS[e.message] || e.message);
       err.textContent = text;
       err.hidden = false;
       $('#li-go').disabled = false;
@@ -788,13 +788,6 @@ async function init() {
     S.settings = { ...base.settings, ...(S.settings || {}) };
     ME = read('as.me', null);
     if (!S.people.some((p) => p.id === ME)) ME = S.people[0] ? S.people[0].id : null;
-    // Если в Supabase данные новее локальных — берём их (см. sync.js; без настройки ничего не делает).
-    const remote = await pullRemote().catch(() => null);
-    if (remote && remote.updated_at > (S.updatedAt || 0)) {
-      S = { ...base, ...remote.payload };
-      S.settings = { ...base.settings, ...(S.settings || {}) };
-      write('as.data', S);
-    }
     if (!S.menu) S.menu = structuredClone(base.menu);
     else if ((S.menu.seedVersion || 0) < (base.menu.seedVersion || 0)) {
       // Новые блюда из data.json добавляются к уже сохранённой библиотеке (по названию, без дублей).
@@ -810,6 +803,15 @@ async function init() {
     });
     plannerInit(plannerCtx);
     render();
+    // Синхронизация в фоне: приложение открывается сразу, даже если сервер недоступен.
+    pullRemote().then((remote) => {
+      if (remote && remote.updated_at > (S.updatedAt || 0)) {
+        S = { ...base, ...remote.payload };
+        S.settings = { ...base.settings, ...(S.settings || {}) };
+        write('as.data', S);
+        render();
+      }
+    }).catch(() => {});
   } catch (err) {
     $('#main').innerHTML = `<div class="card">Не удалось загрузить data.json. Откройте приложение по ссылке GitHub Pages или через локальный сервер.<br><span class="muted">${esc(err.message)}</span></div>`;
   }
