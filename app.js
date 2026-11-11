@@ -2,7 +2,7 @@ import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './men
 import { featuresInit, budgetSettingsHtml, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, extraReminders,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
   remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=b18';
-import { pullRemote, queuePush, authEnabled, signIn, signOutLocal, validToken, getSession } from './sync.js?v=b4';
+import { pullRemote, queuePush, pushWhenOnline, authEnabled, signIn, signOutLocal, validToken, getSession } from './sync.js?v=b5';
 import { iso, todayIso, addDays, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js';
 
 // ---------- помощники ----------
@@ -804,14 +804,18 @@ async function init() {
     plannerInit(plannerCtx);
     render();
     // Синхронизация в фоне: приложение открывается сразу, даже если сервер недоступен.
+    pushWhenOnline();
     pullRemote().then((remote) => {
       if (remote && remote.updated_at > (S.updatedAt || 0)) {
         S = { ...base, ...remote.payload };
         S.settings = { ...base.settings, ...(S.settings || {}) };
         write('as.data', S);
         render();
+      } else {
+        // При каждом запуске отправляем свою версию: если облако было недоступно, изменения уйдут сейчас.
+        queuePush(S);
       }
-    }).catch(() => {});
+    }).catch(() => queuePush(S));
   } catch (err) {
     $('#main').innerHTML = `<div class="card">Не удалось загрузить data.json. Откройте приложение по ссылке GitHub Pages или через локальный сервер.<br><span class="muted">${esc(err.message)}</span></div>`;
   }

@@ -68,6 +68,7 @@ export async function pullRemote() {
 }
 
 let timer = null;
+let retry = null;
 let pending = null;
 
 // Откладываем отправку, чтобы не слать запрос на каждое нажатие.
@@ -78,16 +79,31 @@ export function queuePush(data) {
   timer = setTimeout(pushNow, 800);
 }
 
+// Неудачная отправка не теряется: данные остаются в очереди и уходят при связи.
 async function pushNow() {
   const data = pending;
-  pending = null;
   if (!data) return;
-  const token = await validToken();
-  if (!token) return;
-  const res = await net(`${SUPABASE.url}/rest/v1/family_data`, {
-    method: 'POST',
-    headers: { ...headers(token), Prefer: 'resolution=merge-duplicates' },
-    body: JSON.stringify([{ id: ROW_ID, payload: data, updated_at: data.updatedAt || Date.now() }])
-  });
-  if (!res.ok) console.warn('sync push', res.status);
+  pending = null;
+  try {
+    const token = await validToken();
+    if (!token) throw new Error('нет входа');
+    const res = await net(`${SUPABASE.url}/rest/v1/family_data`, {
+      method: 'POST',
+      headers: { ...headers(token), Prefer: 'resolution=merge-duplicates' },
+      body: JSON.stringify([{ id: ROW_ID, payload: data, updated_at: data.updatedAt || Date.now() }])
+    });
+    if (!res.ok) throw new Error(`sync push ${res.status}`);
+    localStorage.removeItem('as.unsynced');
+  } catch (err) {
+    // Пока данные не ушли, помечаем устройство и не теряем последнюю версию.
+    pending = pending || data;
+    localStorage.setItem('as.unsynced', '1');
+    clearTimeout(retry);
+    retry = setTimeout(pushNow, 30000);
+  }
+}
+
+// Отправка при запуске и при появлении связи.
+export function pushWhenOnline() {
+  if (typeof window !== 'undefined') window.addEventListener('online', () => { if (pending) pushNow(); });
 }
