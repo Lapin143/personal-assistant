@@ -1,7 +1,8 @@
 // Новые разделы «Ассистента»: бюджет и лимиты, прогноз, подушка безопасности,
 // чеки (PDF, CSV, TXT, фото), голосовой ввод, списки, идеи и поездки, подарки, шаги, лента и отчёт.
 // Модуль не знает о DOM приложения напрямую: всё нужное передаётся через featuresInit(ctx).
-import { upcoming, addDays } from './core.js';
+import { upcoming, addDays, daysBetween } from './core.js?v=c1';
+import { allOps } from './store.js?v=c1';
 import { readReceiptLines, parseReceiptLines } from './menu/planner.js?v=b9';
 
 let F = null;
@@ -32,7 +33,21 @@ const catOpts = () => S().categories.expense.map((c) => [c, c]);
 const sumExp = (list) => list.filter((t) => t.type !== 'income').reduce((a, t) => a + (Number(t.amount) || 0), 0);
 const sumInc = (list) => list.filter((t) => t.type === 'income').reduce((a, t) => a + (Number(t.amount) || 0), 0);
 // Личные операции партнёра не показываем: в расчётах видны только общие и свои.
-const visible = () => S().transactions.filter((t) => !t.private || t.personId === me());
+// Операции плюс итоги закрытых месяцев (сводные строки с признаком closed).
+const visible = () => allOps(S()).filter((t) => !t.private || t.personId === me());
+// Средний расход в день за последние 30 дней, без регулярных платежей.
+// От закрытых месяцев остались только итоги, поэтому окно начинается не раньше первого открытого дня.
+function dailyAvgOf(ops, t) {
+  let from = addDays(t, -30);
+  const lastClosed = Object.keys(S().history_json || {}).filter((ym) => ym < t.slice(0, 7)).sort().pop();
+  if (lastClosed) {
+    const [y, m] = lastClosed.split('-').map(Number);
+    const firstOpen = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01`;
+    if (firstOpen > from) from = firstOpen;
+  }
+  const days = Math.max(1, Math.min(30, daysBetween(from, t) + 1));
+  return sumExp(ops.filter((o) => !o.closed && !o.fromRecurring && o.date >= from && o.date <= t)) / days;
+}
 
 export function logEvent(text) {
   const s = S();
@@ -101,7 +116,7 @@ function forecastHtml() {
   const spent = sumExp(ops.filter((o) => o.date.startsWith(month)));
   const income = sumInc(ops.filter((o) => o.date.startsWith(month)));
   // Среднее за 30 дней без регулярных платежей: их учитываем отдельно, чтобы не считать дважды.
-  const dailyAvg = sumExp(ops.filter((o) => !o.fromRecurring && o.date > addDays(t, -31) && o.date <= t)) / 30;
+  const dailyAvg = dailyAvgOf(ops, t);
   const [y, m] = month.split('-').map(Number);
   const dayNow = Number(t.slice(8));
   const left = lastDay(y, m) - dayNow;
@@ -787,7 +802,7 @@ export function dashTop() {
   const monthOps = visible().filter((o) => o.date.startsWith(month));
   const income = sumInc(monthOps);
   const expense = sumExp(monthOps);
-  const dailyAvg = sumExp(visible().filter((o) => !o.fromRecurring && o.date > addDays(t, -31) && o.date <= t)) / 30;
+  const dailyAvg = dailyAvgOf(visible(), t);
   const [y, m] = month.split('-').map(Number);
   const dayNow = Number(t.slice(8));
   const left = lastDay(y, m) - dayNow;

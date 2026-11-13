@@ -1,7 +1,6 @@
-// Настройки синхронизации между устройствами (Supabase).
-// url — адрес проекта, key — публичный publishable-ключ (не secret и не service_role).
-// Публичный ключ виден в коде сайта; защита данных — через Supabase Auth и политики (см. README).
-export const SUPABASE = {
-  url: 'https://ynwmnccdmopyrjjhadot.supabase.co',
-  key: 'sb_publishable_nKjq8D3Hf4LID6yKyMMpaQ_ru3I7udB'
+// Адрес функции-прокси в Yandex Cloud и имя таблицы.
+// Секретов здесь нет: токен Tabrica, ID базы и таблиц, пароли хранятся в переменных окружения функции.
+export const API = {
+  url: 'https://functions.yandexcloud.net/d4e4m399l6s8fn9mdfbk',
+  table: 'records'
 };

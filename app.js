@@ -1,9 +1,10 @@
 import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b9';
 import { featuresInit, budgetSettingsHtml, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, extraReminders,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
-  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=b18';
-import { pullRemote, queuePush, pushWhenOnline, authEnabled, signIn, signOutLocal, validToken, getSession } from './sync.js?v=b5';
-import { iso, todayIso, addDays, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js';
+  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=c1';
+import { api, authEnabled, signIn, signOutLocal, validToken, getSession, setAuthLostHandler, requestCount, economyMode, MONTH_LIMIT } from './api.js?v=c1';
+import { createSync, allOps, isClosed } from './store.js?v=c1';
+import { iso, todayIso, addDays, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js?v=c1';
 
 // ---------- помощники ----------
 const $ = (sel) => document.querySelector(sel);
@@ -11,7 +12,13 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const uid = () => Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
 const read = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } };
 const write = (k, v) => localStorage.setItem(k, JSON.stringify(v));
-const save = () => { S.updatedAt = Date.now(); write('as.data', S); queuePush(S); };
+const save = () => {
+  // Операция, добавленная в закрытый месяц, сразу уходит в его итоги.
+  if (SYNC && SYNC.tidy(S)) toast('Месяц закрыт: операция добавлена в его итоги');
+  S.updatedAt = Date.now();
+  write('as.data', S);
+  schedulePush();
+};
 const money = (n) => `${Math.round(Number(n) || 0).toLocaleString('ru-RU')} ${S.settings.currency}`;
 const fmtDate = (s) => { if (!s) return ''; const [y, m, d] = s.split('-'); return `${d}.${m}.${y}`; };
 const monthName = (ym) => { const [y, m] = ym.split('-'); return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }); };
@@ -50,17 +57,18 @@ const ICON = {
   walk: '<circle cx="13" cy="4" r="2"/><path d="M9 21l2-6 3 2v5M8 10l2-3 4 1 2 4M11 14l-2 2"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
   share: '<path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6h14v-6"/>',
-  idea: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10c1 1 1 2 1 3h6c0-1 0-2 1-3a6 6 0 0 0-4-10z"/>'
+  idea: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10c1 1 1 2 1 3h6c0-1 0-2 1-3a6 6 0 0 0-4-10z"/>',
+  sync: '<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 20v-4h-4"/>'
 };
 const svg = (name, size = 22) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
 const X = svg('x', 18);
 
-function toast(msg) {
+function toast(msg, ms = 1800) {
   const t = document.createElement('div');
   t.className = 'toast';
   t.textContent = msg;
   document.body.appendChild(t);
-  setTimeout(() => t.remove(), 1800);
+  setTimeout(() => t.remove(), ms);
 }
 
 // ---------- тема ----------
@@ -129,7 +137,7 @@ function openForm(title, fields, onSave) {
     render();
   };
 }
-function closeModal() { $('#modal').classList.add('hidden'); }
+function closeModal() { $('#modal').classList.add('hidden'); if (renderPending) render(); }
 
 // ---------- общие куски разметки ----------
 const liUp = (x) => `<div class="li ${x.overdue ? 'overdue' : ''}">
@@ -142,11 +150,14 @@ const goalRow = (g) => `<div class="li" style="display:block">
   <div class="row" style="justify-content:space-between"><span class="t">${esc(g.title)}</span><span class="note">${goalPct(g)}%</span></div>
   <div class="bar"><div style="width:${goalPct(g)}%"></div></div></div>`;
 
-const opRow = (t) => `<div class="li">
+const opRow = (t) => (t.closed ? `<div class="li">
+  <div class="main"><div class="t">${esc(t.category)}${t.private ? '<span class="badge-private">личное</span>' : ''}<span class="badge-private">итог</span></div>
+  <div class="s">${esc(t.note)}${t.personId ? ' · ' + esc(personName(t.personId)) : ''}</div></div>
+  <div class="amt ${t.type === 'income' ? 'inc' : 'exp'}">${t.type === 'income' ? '+' : '−'}${money(t.amount)}</div></div>` : `<div class="li">
   <div class="main"><div class="t">${esc(t.category)}${t.private ? '<span class="badge-private">личное</span>' : ''}</div>
   <div class="s">${fmtDate(t.date)}${t.note ? ' · ' + esc(t.note) : ''}${t.personId ? ' · ' + esc(personName(t.personId)) : ''}</div></div>
   <div class="amt ${t.type === 'income' ? 'inc' : 'exp'}">${t.type === 'income' ? '+' : '−'}${money(t.amount)}</div>
-  <button class="icon-btn" data-act="del" data-coll="transactions" data-id="${t.id}" aria-label="Удалить">${X}</button></div>`;
+  <button class="icon-btn" data-act="del" data-coll="transactions" data-id="${t.id}" aria-label="Удалить">${X}</button></div>`);
 
 const CAR_TYPES = { fuel: 'Топливо', service: 'ТО', repair: 'Ремонт', wash: 'Мойка', parking: 'Парковка', fine: 'Штраф', other: 'Прочее' };
 const REPEAT = { none: 'однократно', month: 'каждый месяц', year: 'каждый год' };
@@ -215,10 +226,16 @@ function viewDash() {
 
 function viewFin() {
   const s = monthSummary(S, FIN_MONTH, ME);
+  // Прошедший месяц можно закрыть: операции заменяются итогами и перестают занимать место в облаке.
+  const rawCount = S.transactions.filter((t) => t.date.startsWith(FIN_MONTH)).length;
+  const closeBar = FIN_MONTH >= todayIso().slice(0, 7) ? ''
+    : rawCount ? `<div class="row close-bar"><span class="note">${isClosed(S, FIN_MONTH) ? 'Месяц закрыт, есть новые операции' : 'Операций за месяц'}: ${rawCount}</span>
+        <button class="btn soft" data-act="closeMonth" data-ym="${FIN_MONTH}">Закрыть месяц</button></div>`
+      : isClosed(S, FIN_MONTH) ? `<div class="row close-bar"><span class="pill pill-confirmed">Месяц закрыт</span><span class="note">Хранятся итоги по категориям</span></div>` : '';
   const top = `<div class="row" style="justify-content:space-between;margin-bottom:10px">
     <button class="icon-btn" data-act="finMonth" data-d="-1" aria-label="Предыдущий месяц">${svg('left', 18)}</button>
     <strong style="text-transform:capitalize">${monthName(FIN_MONTH)}</strong>
-    <button class="icon-btn" data-act="finMonth" data-d="1" aria-label="Следующий месяц">${svg('right', 18)}</button></div>`;
+    <button class="icon-btn" data-act="finMonth" data-d="1" aria-label="Следующий месяц">${svg('right', 18)}</button></div>${closeBar}`;
   const stats = `<div class="grid-2" style="margin-bottom:12px">
     <div class="stat"><div class="lbl">Доходы</div><div class="val pos">${money(s.income)}</div></div>
     <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(s.expense)}</div></div></div>`;
@@ -229,7 +246,7 @@ function viewFin() {
   let body = '';
   if (FIN_TAB === 'ops') {
     const cats = Object.entries(s.byCategory).sort((a, b) => b[1] - a[1]);
-    const ops = S.transactions
+    const ops = allOps(S)
       .filter((t) => t.date.startsWith(FIN_MONTH) && (!t.private || t.personId === ME))
       .sort((a, b) => (a.date < b.date ? 1 : -1));
     body += `<div class="card"><div class="setting-title">По категориям</div>
@@ -386,7 +403,7 @@ function viewPeople() {
         <button class="icon-btn" data-act="del" data-coll="people" data-id="${p.id}" aria-label="Удалить">${X}</button></div>`).join('')}
       <div class="pill-row"><button class="btn" data-act="saveNames">Сохранить имена</button></div></div>
     <div class="card"><div class="setting-title">Аккаунт</div>
-      <p class="setting-desc">Вошли как ${esc(getSession() ? getSession().email : '—')}. Выход удаляет данные с этого устройства, в облаке они остаются.</p>
+      <p class="setting-desc">Вошли как ${esc(getSession() ? getSession().login : '—')}. Выход удаляет данные с этого устройства, в облаке они остаются.</p>
       <div class="pill-row"><button class="btn soft" data-act="logout">Выйти</button></div></div>
 
     <div class="sub-title">Финансы</div>
@@ -413,6 +430,10 @@ function viewPeople() {
       <label class="chk"><input type="checkbox" id="dark-toggle" ${document.documentElement.dataset.theme === 'dark' ? 'checked' : ''}> Тёмная тема</label></div>
 
     <div class="sub-title">Данные</div>
+    <div class="card"><div class="setting-title">Синхронизация</div>
+      <p class="setting-desc">${syncInfoHtml()}</p>
+      <div class="pill-row"><button class="btn" data-act="syncNow">Синхронизировать</button>
+        <button class="btn soft" data-act="fullSync">Полная сверка</button></div></div>
     <div class="card"><div class="setting-title">Резервная копия</div>
       <p class="setting-desc">Сохраняет все данные в файл на случай поломки или смены телефона. Не публикуйте файл: в нём финансы.</p>
       <div class="pill-row"><button class="btn" data-act="exportData">Скачать копию</button></div></div>`;
@@ -461,6 +482,7 @@ function refreshBellIfOpen() {
 // ---------- отрисовка ----------
 function render() {
   if (!S) return;
+  renderPending = false;
   ensureData(S);
   $('#hero-title').textContent = TITLE[SEC];
   $('#hero-sub').textContent = `${fmtDate(todayIso())} · ${personName(ME) || 'Гость'}`;
@@ -473,6 +495,7 @@ function render() {
   const bc = $('#bell-count');
   bc.textContent = n > 9 ? '9+' : String(n);
   bc.hidden = n === 0;
+  paintSync();
   if (SEC === 'menu') plannerBind();
   bindChange();
 }
@@ -595,7 +618,16 @@ const ADD = {
 const ACTIONS = {
   ...FEATURE_ACTIONS,
   ...EXTRA_ACTIONS_ALL,
-  logout: () => { signOutLocal(); localStorage.removeItem('as.data'); location.reload(); return false; },
+  logout: () => {
+    if (SYNC && SYNC.pendingCount() && !confirm('Есть изменения, которые ещё не ушли в облако. При выходе они пропадут. Выйти?')) return false;
+    signOutLocal();
+    for (const k of ['as.data', 'as.sync', 'as.lastPull']) localStorage.removeItem(k);
+    location.reload();
+    return false;
+  },
+  syncNow: () => { manualSync(false); return false; },
+  fullSync: () => { manualSync(true); return false; },
+  closeMonth: (d) => { openCloseMonth(d.ym); return false; },
   sec: (d) => { SEC = d.v; },
   finMonth: (d) => { FIN_MONTH = shiftMonth(FIN_MONTH, Number(d.d)); },
   finTab: (d) => { FIN_TAB = d.v; },
@@ -698,15 +730,7 @@ const ACTIONS = {
     toast('Сохранено');
   },
   bell: () => { openBell(); },
-  exportData: () => {
-    const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'assistant-data.json';
-    a.click();
-    URL.revokeObjectURL(a.href);
-    return false;
-  },
+  exportData: () => { downloadJson('assistant-data.json', S); return false; },
 };
 
 document.addEventListener('click', (e) => {
@@ -718,6 +742,7 @@ document.addEventListener('click', (e) => {
   if (!ACTIONS[name]) return;
   changed = ACTIONS[name](el.dataset);
   if (changed !== false) { save(); render(); }
+  else if (renderPending && $('#modal').classList.contains('hidden')) { renderPending = false; render(); }
 });
 
 // ---------- контекст для модуля меню ----------
@@ -734,8 +759,155 @@ const plannerCtx = {
   addTransaction: (t) => S.transactions.push({ id: uid(), ...t, account: t.account || (S.accounts[0] || {}).id || '' }),
 };
 
+// ---------- синхронизация ----------
+// Никаких опросов по таймеру: сервер запрашивается при открытии приложения, после изменений и по кнопке.
+let SYNC = null;
+let pushTimer = null;
+let syncBusy = false;
+let manualAt = 0;
+let renderPending = false;
+const PUSH_DELAY = 6000;          // правки подряд уходят одним пакетом
+const MANUAL_GAP = 30000;         // кнопка — не чаще раза в 30 секунд
+// Как давно должен был быть прошлый запрос, чтобы при открытии запросить сервер снова.
+const pullGap = (resume) => (economyMode() ? 60 : resume ? 3 : 0.5) * 60000;
+const hhmm = (ts) => new Date(ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+function schedulePush() {
+  if (!SYNC) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => runSync(), PUSH_DELAY);
+  paintSync();
+}
+
+function paintSync() {
+  const btn = $('#sync-btn');
+  if (!btn) return;
+  btn.classList.toggle('busy', syncBusy);
+  btn.disabled = syncBusy || Date.now() - manualAt < MANUAL_GAP;
+  const dot = $('#sync-dot');
+  if (dot) dot.hidden = !SYNC || syncBusy || SYNC.pendingCount() === 0;
+}
+
+// Данные с сервера не перерисовывают экран, пока человек печатает в поле или открыто окно.
+function renderSafe() {
+  const a = document.activeElement;
+  const typing = Boolean(a && ['INPUT', 'TEXTAREA', 'SELECT'].includes(a.tagName) && $('#main').contains(a));
+  if (typing || !$('#modal').classList.contains('hidden')) { renderPending = true; paintSync(); return; }
+  render();
+}
+
+async function runSync({ full = false } = {}) {
+  if (!SYNC || !validToken()) return { ok: false, error: 'Нужен вход' };
+  clearTimeout(pushTimer);
+  syncBusy = true;
+  paintSync();
+  const r = await SYNC.sync({ full });
+  syncBusy = false;
+  if (r.ok) write('as.lastPull', Date.now());
+  if (r.changed) renderSafe(); else paintSync();
+  return r;
+}
+
+async function manualSync(full) {
+  if (syncBusy) return;
+  if (Date.now() - manualAt < MANUAL_GAP) { toast('Синхронизация доступна раз в 30 секунд'); return; }
+  manualAt = Date.now();
+  setTimeout(paintSync, MANUAL_GAP + 50);
+  const r = await runSync({ full });
+  toast(r.ok ? `Данные обновлены · ${hhmm(Date.now())}` : `Не удалось синхронизировать: ${r.error}`, r.ok ? 2200 : 4000);
+  if (SEC === 'settings' && $('#modal').classList.contains('hidden')) render();
+}
+
+function syncInfoHtml() {
+  if (!SYNC) return 'Синхронизация выключена.';
+  const i = SYNC.info();
+  const pending = SYNC.pendingCount();
+  const n = requestCount();
+  return `${i.last ? `Последняя синхронизация: ${fmtDate(iso(new Date(i.last)))} в ${hhmm(i.last)}.` : 'Синхронизации ещё не было.'}
+    ${pending ? `Ждут отправки: ${pending}.` : 'Все изменения отправлены.'}
+    ${i.error ? `<br><b>Последняя ошибка:</b> ${esc(i.error)}` : ''}
+    <br>Запросов к базе с этого устройства в этом месяце: <b>${n}</b>. Бесплатный лимит Табрики — ${MONTH_LIMIT.toLocaleString('ru-RU')} в месяц на все устройства; точный счётчик смотрите в Табрике: Настройки → Статистика.
+    ${economyMode() ? '<br><b>Экономный режим:</b> автообновление при открытии не чаще раза в час. Кнопка работает как обычно.' : ''}
+    <br>Данные обновляются при открытии приложения, после ваших изменений и по кнопке в шапке. «Полная сверка» перечитывает всё заново.`;
+}
+
+function startSync() {
+  setAuthLostHandler(() => { toast('Нужно войти заново', 2500); setTimeout(() => location.reload(), 800); });
+  SYNC = createSync({
+    api, storage: localStorage,
+    getState: () => S,
+    setState: (next) => { S = next; ensureData(S); write('as.data', S); }
+  });
+  const first = !SYNC.info().last;
+  const due = Date.now() - read('as.lastPull', 0) > pullGap(false);
+  if (first) toast('Первая синхронизация, это может занять до минуты', 3500);
+  if (first || due || SYNC.pendingCount()) {
+    runSync().then((r) => {
+      if (first) toast(r.ok ? 'Синхронизация завершена' : `Синхронизация не удалась: ${r.error}`, 3500);
+    });
+  } else paintSync();
+  // Возврат в приложение после паузы — это действие человека, а не фоновый опрос.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      if (!syncBusy && (SYNC.pendingCount() || Date.now() - read('as.lastPull', 0) > pullGap(true))) runSync();
+    } else if (!syncBusy && SYNC.pendingCount()) runSync();
+  });
+  window.addEventListener('online', () => { if (!syncBusy && SYNC.pendingCount()) runSync(); });
+}
+
+// ---------- закрытие месяца ----------
+function downloadJson(name, data) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function openCloseMonth(ym) {
+  const txs = S.transactions.filter((t) => t.date.startsWith(ym));
+  const inc = txs.filter((t) => t.type === 'income').reduce((a, t) => a + (Number(t.amount) || 0), 0);
+  const exp = txs.filter((t) => t.type !== 'income').reduce((a, t) => a + (Number(t.amount) || 0), 0);
+  plannerCtx.openModal(`Закрыть ${monthName(ym)}`, `
+    <p class="setting-desc">Операции за этот месяц заменятся итогами по категориям. Графики, бюджет и вкладка «Год» продолжат показывать суммы,
+      но отдельные операции удалятся из приложения и из облака на всех устройствах. Вернуть их можно будет только из файла-копии, который скачается сейчас.</p>
+    <div class="grid-2" style="margin-bottom:12px">
+      <div class="stat"><div class="lbl">Доходы</div><div class="val pos">${money(inc)}</div></div>
+      <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(exp)}</div></div></div>
+    <p class="note">Операций: ${txs.length}. На закрытие уйдёт примерно ${txs.length + 3} запросов к базе из ${MONTH_LIMIT.toLocaleString('ru-RU')} в месяц.</p>
+    <div class="warn-box" id="cm-err" hidden></div>
+    <button class="btn block" id="cm-go">Скачать копию и закрыть месяц</button>`);
+  $('#cm-go').onclick = async () => {
+    const btn = $('#cm-go');
+    const err = $('#cm-err');
+    err.hidden = true;
+    btn.disabled = true;
+    btn.textContent = 'Закрываю…';
+    downloadJson(`assistant-${ym}.json`, { month: ym, saved_at: new Date().toISOString(), transactions: txs });
+    clearTimeout(pushTimer);
+    syncBusy = true;
+    paintSync();
+    const r = await SYNC.closeMonth(ym);
+    syncBusy = false;
+    write('as.data', S);
+    if (r.ok) {
+      closeModal();
+      logEvent(`Закрыт месяц: ${monthName(ym)}`);
+      save();
+      render();
+      toast(`Месяц закрыт: ${r.count} операций заменены итогами`, 3000);
+    } else {
+      err.textContent = `Не удалось закрыть месяц: ${r.error}. Данные не потеряны, попробуйте позже.`;
+      err.hidden = false;
+      btn.disabled = false;
+      btn.textContent = 'Скачать копию и закрыть месяц';
+      render();
+    }
+  };
+}
+
 // ---------- вход ----------
-const LOGIN_ERRORS = { 'Invalid login credentials': 'Неверный email или пароль', 'Email not confirmed': 'Email не подтверждён: попросите владельца подтвердить аккаунт' };
 
 function showLogin() {
   const actions = document.querySelector('.hero-actions');
@@ -747,7 +919,7 @@ function showLogin() {
     <div class="setting-title">Войти в Ассистент</div>
     <p class="setting-desc">Вход нужен один раз на устройство. Регистрация закрыта, аккаунты создаёт владелец.</p>
     <div class="form">
-      <label class="field" for="li-email">Email</label><input id="li-email" type="email" autocomplete="username" inputmode="email">
+      <label class="field" for="li-email">Логин</label><input id="li-email" type="text" autocomplete="username" autocapitalize="none" spellcheck="false">
       <label class="field" for="li-pass">Пароль</label><input id="li-pass" type="password" autocomplete="current-password">
       <div class="warn-box" id="li-err" hidden></div>
       <button class="btn block" id="li-go">Войти</button></div></div>`;
@@ -756,13 +928,13 @@ function showLogin() {
     const password = $('#li-pass').value;
     const err = $('#li-err');
     err.hidden = true;
-    if (!email || !password) { err.textContent = 'Введите email и пароль'; err.hidden = false; return; }
+    if (!email || !password) { err.textContent = 'Введите логин и пароль'; err.hidden = false; return; }
     $('#li-go').disabled = true;
     try {
       await signIn(email, password);
       location.reload();
     } catch (e) {
-      const text = e instanceof TypeError || e.name === 'TimeoutError' ? 'Нет связи с сервером. Проверьте интернет; при блокировке сервера для входа нужен VPN.' : (LOGIN_ERRORS[e.message] || e.message);
+      const text = e instanceof TypeError || e.name === 'TimeoutError' || e.name === 'AbortError' ? 'Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.' : (e.message || 'Не удалось войти');
       err.textContent = text;
       err.hidden = false;
       $('#li-go').disabled = false;
@@ -803,19 +975,8 @@ async function init() {
     });
     plannerInit(plannerCtx);
     render();
-    // Синхронизация в фоне: приложение открывается сразу, даже если сервер недоступен.
-    pushWhenOnline();
-    pullRemote().then((remote) => {
-      if (remote && remote.updated_at > (S.updatedAt || 0)) {
-        S = { ...base, ...remote.payload };
-        S.settings = { ...base.settings, ...(S.settings || {}) };
-        write('as.data', S);
-        render();
-      } else {
-        // При каждом запуске отправляем свою версию: если облако было недоступно, изменения уйдут сейчас.
-        queuePush(S);
-      }
-    }).catch(() => queuePush(S));
+    // Синхронизация в фоне: приложение открывается сразу из данных на устройстве, даже если сервер недоступен.
+    startSync();
   } catch (err) {
     $('#main').innerHTML = `<div class="card">Не удалось загрузить data.json. Откройте приложение по ссылке GitHub Pages или через локальный сервер.<br><span class="muted">${esc(err.message)}</span></div>`;
   }

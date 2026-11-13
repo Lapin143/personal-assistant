@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
   <link rel="stylesheet" href="style.css?v=b2">
   <link rel="stylesheet" href="menu/planner.css?v=b7">
-  <link rel="stylesheet" href="features.css?v=b9">
+  <link rel="stylesheet" href="features.css?v=c1">
 </head>
 <body>
   <div class="app">
@@ -23,6 +23,10 @@
           <h1 id="hero-title">Ассистент</h1>
         </div>
         <div class="hero-actions">
+          <button class="hero-badge sync-btn" id="sync-btn" data-act="syncNow" aria-label="Синхронизировать">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 20v-4h-4"/></svg>
+            <span class="sync-dot" id="sync-dot" hidden></span>
+          </button>
           <button class="hero-badge bell" id="bell" data-act="bell" aria-label="Напоминания">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
             <span class="bell-count" id="bell-count" hidden></span>
@@ -50,6 +54,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=b23"></script>
+  <script type="module" src="app.js?v=c1"></script>
 </body>
 </html>

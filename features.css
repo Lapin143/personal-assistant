@@ -72,3 +72,13 @@
 .bm-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--sub);margin-top:8px}
 .lim-row{display:grid;grid-template-columns:1fr 130px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--row-line)}
 .lim-row input{width:100%;padding:8px;border-radius:10px;border:1px solid var(--row-line);background:var(--surface);color:inherit;font:inherit;text-align:right}
+
+/* Синхронизация и закрытие месяца */
+.sync-btn { position: relative; border: 0; }
+.sync-btn.busy svg { animation: sync-spin 1s linear infinite; }
+.sync-btn:disabled { opacity: .55; cursor: default; }
+.sync-dot { position: absolute; top: 9px; right: 9px; width: 9px; height: 9px; border-radius: 50%; background: #f2c14e; }
+.sync-dot[hidden] { display: none; }
+@keyframes sync-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sync-btn.busy svg { animation: none; opacity: .5; } }
+.close-bar { justify-content: space-between; gap: 10px; margin: -2px 0 12px; }

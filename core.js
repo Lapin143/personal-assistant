@@ -1,4 +1,5 @@
 // Общая логика «Ассистента». Без DOM: используется и в браузере, и в скрипте уведомлений.
+import { allOps } from './store.js?v=c1';
 
 export const iso = (d) => {
   const z = new Date(d);
@@ -67,7 +68,7 @@ export function upcoming(data, today, days = 30) {
 
 // Итоги месяца; личные операции других людей не показываются
 export function monthSummary(data, ym, me) {
-  const tx = (data.transactions || []).filter((t) => t.date.startsWith(ym) && (!t.private || t.personId === me));
+  const tx = allOps(data).filter((t) => t.date.startsWith(ym) && (!t.private || t.personId === me));
   const res = { income: 0, expense: 0, byCategory: {} };
   for (const t of tx) {
     const amt = Number(t.amount) || 0;
