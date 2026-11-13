@@ -311,6 +311,41 @@ for (const mode of [{ jsonAsString: true }, { rejectObjects: true, jsonAsString:
 }
 ok('работает при любом представлении JSON-поля в Tabrica');
 
+// 16а. Tabrica не принимает длинные значения: части JSON уменьшаются сами, второе устройство подстраивается
+{
+  const T4 = makeTabrica({ maxJson: 6000 });
+  const E = await makeDevice(T4, 'vlad', 'password-one', sample());
+  r = await E.go();
+  assert.ok(r.ok, r.error);
+  assert.ok([...T4.rows.values()].every((x) => JSON.stringify(x.data).length <= 6000));
+  const F = await makeDevice(T4, 'katya', 'password-two', structuredClone(base));
+  r = await F.go();
+  assert.ok(r.ok, r.error);
+  same(E.S, F.S);
+  F.S.menu.dishes[0].name += ' ★';
+  r = await F.go();
+  assert.ok(r.ok, r.error);
+  await E.go();
+  assert.equal(E.S.menu.dishes[0].name, F.S.menu.dishes[0].name);
+  for (let i = 0; i < 2; i++) { r = await E.go(); assert.equal(r.sent, 0); r = await F.go(); assert.equal(r.sent, 0); }
+  same(E.S, F.S);
+  ok('ограничение размера значения: JSON делится мельче, устройства сходятся без лишних записей');
+}
+
+// 16б. Другой формат ответа (поля вложены) и временные отказы 429
+{
+  const T5 = makeTabrica({ nested: true, throttleEvery: 7 });
+  const G = await makeDevice(T5, 'vlad', 'password-one', sample());
+  r = await G.go();
+  assert.ok(r.ok, r.error);
+  const H = await makeDevice(T5, 'katya', 'password-two', structuredClone(base));
+  r = await H.go();
+  assert.ok(r.ok, r.error);
+  same(G.S, H.S);
+  assert.equal(r.sent, 0);
+  ok('вложенный формат записей и временные отказы 429 не мешают синхронизации');
+}
+
 // 17. Месячный бюджет запросов: 30 дней обычного использования двумя людьми
 {
   const T3 = makeTabrica();

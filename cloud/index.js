@@ -19,6 +19,8 @@ const MIN_SECRET = 32;
 const MIN_PASSWORD = 8;
 const TABRICA_TIMEOUT_MS = 8000;
 const MAX_BATCH = 100;
+const RETRY_429 = 2;
+const RETRY_DELAY_MS = Number(process.env.RETRY_DELAY_MS) || 1200;
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 1000;
 const STAMP_FIELD = 'updated'; // время изменения ставит сервер: часы устройств могут расходиться
@@ -182,7 +184,12 @@ async function tabrica(env, op, now, fetchImpl) {
 
   let res;
   try {
-    res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(TABRICA_TIMEOUT_MS) });
+    // 429 может означать «слишком часто»: ждём и повторяем, прежде чем сдаться.
+    for (let attempt = 0; ; attempt++) {
+      res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(TABRICA_TIMEOUT_MS) });
+      if (res.status !== 429 || attempt >= RETRY_429) break;
+      await sleep(RETRY_DELAY_MS * (attempt + 1));
+    }
   } catch (err) {
     return { status: 504, body: { error: 'upstream_unreachable', message: 'Tabrica не отвечает' } };
   }

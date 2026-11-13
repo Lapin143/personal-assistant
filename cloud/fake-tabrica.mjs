@@ -2,11 +2,13 @@
 import assert from 'node:assert/strict';
 
 // ---------- имитация Tabrica ----------
-export function makeTabrica({ jsonAsString = false, rejectObjects = false, rowLimit = 1000 } = {}) {
+export function makeTabrica({ jsonAsString = false, rejectObjects = false, rowLimit = 1000, maxJson = 0, nested = false, throttleEvery = 0 } = {}) {
   const rows = new Map();
   let nextId = 1;
   const t = { rows, requests: 0, log: [], rowLimit, badToken: false };
-  const out = (r) => ({ ...r, data: jsonAsString && r.data !== undefined && r.data !== null ? JSON.stringify(r.data) : r.data });
+  const flat = (r) => ({ ...r, data: jsonAsString && r.data !== undefined && r.data !== null ? JSON.stringify(r.data) : r.data });
+  const out = (r) => { if (!nested) return flat(r); const { id, ...fields } = flat(r); return { id, fields }; };
+  const tooBig = (body) => maxJson && body.data.data !== undefined && JSON.stringify(body.data.data).length > maxJson;
   const cond = (expr) => {
     const m = /^\((\w+),(eq|gt|ge),(.*)\)$/.exec(expr);
     if (!m) throw new Error('where: ' + expr);
@@ -19,6 +21,8 @@ export function makeTabrica({ jsonAsString = false, rejectObjects = false, rowLi
     return d;
   };
   t.fetch = async (url, init) => {
+    t.calls = (t.calls || 0) + 1;
+    if (throttleEvery && t.calls % throttleEvery === 0) return { status: 429, text: async () => '{"error":"rate_limited"}' };
     t.requests++;
     const u = new URL(url);
     const m = /\/databases\/(\d+)\/tables\/(\d+)\/records(?:\/(\d+))?$/.exec(u.pathname);
@@ -40,6 +44,7 @@ export function makeTabrica({ jsonAsString = false, rejectObjects = false, rowLi
       if (rows.size >= t.rowLimit) return res(400, { error: 'row_limit_exceeded', message: 'row limit' });
       const body = JSON.parse(init.body);
       if (rejectObjects && body.data.data !== null && typeof body.data.data === 'object') return res(422, { error: 'validation_error' });
+      if (tooBig(body)) return res(400, { error: 'public_invalid_data', message: 'value too long' });
       const row = { id: nextId++, ...store(body.data) };
       rows.set(row.id, row);
       return res(201, { message: 'success', data: { id: row.id, data: out(row) } });
@@ -48,6 +53,7 @@ export function makeTabrica({ jsonAsString = false, rejectObjects = false, rowLi
     if (init.method === 'PATCH') {
       const body = JSON.parse(init.body);
       if (rejectObjects && body.data.data !== null && typeof body.data.data === 'object') return res(422, { error: 'validation_error' });
+      if (tooBig(body)) return res(400, { error: 'public_invalid_data', message: 'value too long' });
       Object.assign(rows.get(id), store(body.data));
       return res(200, { message: 'success', data: { record: out(rows.get(id)) } });
     }

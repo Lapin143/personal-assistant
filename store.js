@@ -11,7 +11,8 @@
 // Экономия запросов: при запуске один GET «что изменилось с прошлого раза», наверх уходят только изменённые строки.
 
 export const CHUNK = 20000;            // длинный JSON делится на части такого размера
-const OVERLAP_MS = 120000;             // запас при запросе изменений: записи с пограничным временем не теряются
+const OVERLAP_MS = 300000;             // запас при запросе изменений: записи с пограничным временем не теряются
+const MIN_CHUNK = 2000;
 const FULL_EVERY_MS = 7 * 86400000;    // полная сверка раз в неделю
 const TOMB_KEEP_MS = 14 * 86400000;    // пометки об удалении живут 14 дней, потом строка удаляется совсем
 const BATCH = 40;
@@ -138,13 +139,13 @@ export function fromUnits(U, prev, rowIdOf = () => undefined) {
 
 // ---------- логические записи ↔ строки таблицы (длинный JSON режется на части) ----------
 
-export function toRows(U) {
+export function toRows(U, size = CHUNK) {
   const R = new Map();
   for (const [id, u] of U) {
     const s = canon(u.data);
-    if (s.length <= CHUNK) { R.set(id, u); continue; }
+    if (s.length <= size) { R.set(id, u); continue; }
     const parts = [];
-    for (let i = 0; i < s.length; i += CHUNK) parts.push(s.slice(i, i + CHUNK));
+    for (let i = 0; i < s.length; i += size) parts.push(s.slice(i, i + size));
     const v = hash(s);
     R.set(id, { ...u, data: { $chunks: parts.length, $v: v, $p: parts[0] } });
     for (let i = 1; i < parts.length; i++) {
@@ -184,14 +185,21 @@ function parseData(v) {
 
 // Запись из ответа Tabrica → строка в нашем виде. Чужие строки (без kind и key) пропускаются.
 export function normRemote(rec) {
-  if (!rec || rec.id === undefined || rec.id === null) return null;
-  const kind = String(rec.kind ?? '').trim();
-  const key = String(rec.key ?? '').trim();
+  if (!rec || typeof rec !== 'object') return null;
+  const id = Number(rec.id ?? rec.row_id);
+  if (!Number.isFinite(id)) return null;
+  // Обычно поля лежат прямо в записи; на случай другого формата ответа понимаем и вложенный вид.
+  const isObj = (x) => x && typeof x === 'object' && !Array.isArray(x);
+  const f = rec.kind !== undefined || rec.key !== undefined ? rec
+    : isObj(rec.data) && ('kind' in rec.data || 'key' in rec.data) ? rec.data
+      : isObj(rec.fields) ? rec.fields : rec;
+  const kind = String(f.kind ?? '').trim();
+  const key = String(f.key ?? '').trim();
   if (!kind || !key) return null;
   return {
-    id: Number(rec.id), kind, key,
-    title: String(rec.title ?? ''), date: String(rec.date ?? ''), amount: Number(rec.amount) || 0, category: String(rec.category ?? ''),
-    data: parseData(rec.data), deleted: Number(rec.deleted) === 1 || rec.deleted === true, updated: Number(rec.updated) || 0
+    id, kind, key,
+    title: String(f.title ?? ''), date: String(f.date ?? ''), amount: Number(f.amount) || 0, category: String(f.category ?? ''),
+    data: parseData(f.data), deleted: Number(f.deleted) === 1 || f.deleted === true, updated: Number(f.updated) || 0
   };
 }
 
@@ -263,7 +271,7 @@ function mergeLists(local, remote) {
 // ---------- движок синхронизации ----------
 
 export function createSync({ api, storage, getState, setState, now = () => Date.now(), onStatus = () => {}, metaKey = 'as.sync' }) {
-  const blank = () => ({ rows: {}, last: 0, lastFull: 0, tombs: {}, kill: [], jsonStr: false, needFull: false, lastOk: 0 });
+  const blank = () => ({ rows: {}, last: 0, lastFull: 0, tombs: {}, kill: [], jsonStr: false, needFull: false, lastOk: 0, chunk: CHUNK });
   let meta = blank();
   try { meta = { ...blank(), ...(JSON.parse(storage.getItem(metaKey)) || {}) }; } catch { meta = blank(); }
   const saveMeta = () => storage.setItem(metaKey, JSON.stringify(meta));
@@ -271,7 +279,7 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
   let lastError = '';
 
   const rowIdOf = (rk) => (meta.rows[rk] ? meta.rows[rk].id : undefined);
-  const localRows = () => toRows(toUnits(getState()));
+  const localRows = () => toRows(toUnits(getState()), meta.chunk || CHUNK);
 
   function pendingCount() {
     const S = getState();
@@ -337,6 +345,9 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
 
     const incoming = pulled.records.map(normRemote).filter(Boolean)
       .sort((a, b) => (a.deleted === b.deleted ? a.id - b.id : a.deleted ? -1 : 1)); // сначала пометки об удалении
+    // Размер частей длинного JSON должен быть одинаковым на всех устройствах: берём тот, которым записана самая свежая строка.
+    const newest = incoming.filter((r) => !r.deleted && r.data && r.data.$chunks > 1 && typeof r.data.$p === 'string').sort((a, b) => b.updated - a.updated)[0];
+    const learned = newest && newest.data.$p.length >= MIN_CHUNK ? newest.data.$p.length : 0;
     for (const r of incoming) {
       remoteIds.add(r.id);
       const rk = `${r.kind}|${r.key}`;
@@ -397,6 +408,7 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
     }
     if (foldClosed(next)) changed = true;
     if (changed) { next.updatedAt = t; setState(next); }
+    if (learned && learned !== meta.chunk) meta.chunk = learned;
     return changed;
   }
 
@@ -461,7 +473,7 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
     let requests = 0;
     let triedStr = false;
     let sentBeforeStr = 0;
-    for (let guard = 0; guard < 60; guard++) {
+    for (let guard = 0; guard < 80; guard++) {
       if (!triedStr) sentBeforeStr = sent;
       const ops = buildOps();
       if (!ops.length) break;
@@ -477,8 +489,18 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
       saveMeta();
       if (failed) {
         // Tabrica не приняла JSON объектом: один раз пробуем отправить его строкой.
-        const limit = /limit_exceeded|too_large/.test(JSON.stringify(failed.body || ''));
-        if (!meta.jsonStr && !triedStr && !limit && (failed.status === 400 || failed.status === 422)) { meta.jsonStr = true; triedStr = true; saveMeta(); continue; }
+        const text = JSON.stringify(failed.body || '');
+        const limit = /row_limit_exceeded|tabular_data_limit_exceeded/.test(text);
+        const bad = [400, 413, 422].includes(failed.status) && !limit;
+        const op = chunk[results.length - 1] || {};
+        const size = op.data && op.data.data !== undefined ? JSON.stringify(op.data.data).length : 0;
+        // Запись не принята из-за размера: делим длинный JSON на более мелкие части и пробуем снова.
+        if (bad && size > MIN_CHUNK && (meta.chunk || CHUNK) > MIN_CHUNK && (failed.status === 413 || /too_large|invalid_data|validation/.test(text) || size > (meta.chunk || CHUNK) / 2)) {
+          meta.chunk = Math.max(MIN_CHUNK, Math.floor(Math.min(meta.chunk || CHUNK, size) / 2));
+          saveMeta();
+          continue;
+        }
+        if (!meta.jsonStr && !triedStr && bad && failed.status !== 413) { meta.jsonStr = true; triedStr = true; saveMeta(); continue; }
         if (triedStr && sent === sentBeforeStr) { meta.jsonStr = false; saveMeta(); } // строкой тоже не принято: дело не в формате
         const err = new Error(errorText(failed));
         err.requests = requests;
