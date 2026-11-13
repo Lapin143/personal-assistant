@@ -75,8 +75,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center;
   font-size: 26px; background: rgba(255,255,255,.18);
 }
-.progress { height: 8px; border-radius: 99px; background: rgba(255,255,255,.22); margin-top: 14px; overflow: hidden; }
-.progress-bar { height: 100%; border-radius: 99px; background: #fff; width: 0; transition: width .4s ease; }
+
 .hero-sub { margin-top: 8px; font-size: 13px; opacity: .92; }
 
 /* ---------- вкладки ---------- */
@@ -100,10 +99,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ---------- общие элементы ---------- */
 .card { background: var(--card); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; box-shadow: var(--shadow); }
-.section-title { font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin: 18px 4px 8px; font-weight: 700; }
+
 .muted { color: var(--muted); font-size: 13px; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.grow { flex: 1; }
 
 .btn {
   border: 0; cursor: pointer; border-radius: 999px; padding: 9px 16px;
@@ -135,44 +133,8 @@ label.field { display: block; font-size: 13px; color: var(--muted); font-weight:
 .chip.dinner { background: #e6e7f4; color: #4f5b93; }
 
 /* ---------- вкладка «Сегодня» ---------- */
-.day-nav {
-  display: flex; justify-content: space-between; align-items: center; gap: 10px;
-  background: var(--card); border-radius: var(--radius); padding: 10px 12px; box-shadow: var(--shadow); margin-bottom: 12px;
-}
-.day-nav .label { text-align: center; }
-.day-nav .label strong { display: block; font-size: 16px; }
-.day-nav .label .muted { text-transform: capitalize; }
+
 .today-pill { display: inline-block; margin-left: 6px; font-size: 12px; font-weight: 700; color: #fff; background: var(--terra); padding: 2px 8px; border-radius: 999px; vertical-align: middle; }
-
-.meal {
-  position: relative; background: var(--card); border-radius: var(--radius);
-  padding: 16px 16px 14px 20px; margin-bottom: 12px; box-shadow: var(--shadow); overflow: hidden;
-}
-.meal::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--c, var(--green)); }
-.meal.breakfast { --c: var(--amber); }
-.meal.lunch { --c: var(--green-2); }
-.meal.dinner { --c: var(--indigo); }
-.meal-head { display: flex; gap: 14px; align-items: center; }
-.meal-emoji {
-  width: 62px; height: 62px; border-radius: 18px; display: grid; place-items: center;
-  font-size: 32px; background: #f6f3ec; flex-shrink: 0;
-}
-.meal-body { flex: 1; min-width: 0; }
-.meal-name { font-size: 18px; font-weight: 800; line-height: 1.2; margin-top: 6px; }
-.meal-desc { font-size: 13.5px; color: #55605b; margin-top: 4px; }
-.meal-actions { display: flex; gap: 8px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
-.replaced-note { font-size: 12px; color: var(--terra); margin-top: 8px; }
-.replaced-note a { color: var(--terra); font-weight: 700; }
-
-details.recipe { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 10px; }
-details.recipe summary { cursor: pointer; font-weight: 700; font-size: 13px; color: var(--green); list-style: none; }
-details.recipe summary::-webkit-details-marker { display: none; }
-details.recipe summary::after { content: " ＋"; }
-details.recipe[open] summary::after { content: " －"; }
-details.recipe p { margin: 8px 0 0; font-size: 13.5px; }
-details.recipe b { color: #3b4742; }
-
-.soup-note { font-size: 12px; color: var(--muted); margin: -4px 4px 10px; }
 
 /* ---------- окно замены ---------- */
 .modal { position: fixed; inset: 0; background: rgba(20, 28, 25, .45); display: flex; align-items: flex-end; justify-content: center; z-index: 20; }
@@ -185,19 +147,9 @@ details.recipe b { color: #3b4742; }
 .sheet-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 10px; }
 .sheet-head strong { font-size: 17px; }
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.tile {
-  border: 2px solid transparent; background: var(--card); border-radius: 16px; padding: 12px;
-  text-align: left; cursor: pointer; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 6px;
-}
-.tile .e { font-size: 26px; }
-.tile .n { font-weight: 700; font-size: 14px; line-height: 1.25; }
-.tile.current { border-color: var(--green); }
-.tile .now { font-size: 12px; color: var(--green); font-weight: 700; }
 
 /* ---------- вкладка «Блюда» ---------- */
-.search { position: relative; margin-bottom: 10px; }
-.search input { padding-left: 38px; border-radius: 14px; }
-.search::before { content: "🔎"; position: absolute; left: 12px; top: 13px; font-size: 14px; }
+
 .filters { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 8px; }
 .filters button {
   border: 0; background: var(--surface); border-radius: 999px; padding: 7px 13px; font-size: 13px; font-weight: 700;
@@ -215,19 +167,12 @@ details.recipe b { color: #3b4742; }
 .dish .nm { font-weight: 800; line-height: 1.2; }
 .dish .ds { font-size: 13px; color: #55605b; margin-top: 4px; }
 .dish .meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; }
-.dish details.recipe { margin-top: 8px; }
-
-.add-card { background: var(--card); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); margin-top: 14px; }
-.add-card h3 { margin: 0 0 10px; font-size: 16px; }
 
 /* ---------- вкладка «Покупки» ---------- */
-.shop-summary { background: var(--card); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); margin-bottom: 12px; }
-.shop-summary .big { font-size: 22px; font-weight: 800; }
-.shop-summary .progress { background: #eaf1ee; margin-top: 10px; }
-.shop-summary .progress-bar { background: var(--green); }
+
 .shop-card { background: var(--card); border-radius: var(--radius); padding: 6px 16px 10px; box-shadow: var(--shadow); margin-bottom: 12px; }
 .shop-card h3 { margin: 12px 0 2px; font-size: 16px; }
-.group-title { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--green-2); font-weight: 800; margin: 12px 0 2px; }
+
 .item {
   display: flex; gap: 12px; align-items: center; padding: 11px 0; border-bottom: 1px solid #f1eee7; cursor: pointer;
 }
@@ -242,11 +187,6 @@ details.recipe b { color: #3b4742; }
 .item .nm { font-weight: 600; }
 .item .qty { font-size: 13px; color: var(--muted); margin-top: 1px; }
 .item.done .nm, .item.done .qty { color: var(--done); text-decoration: line-through; }
-
-.receipt-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #f1eee7; gap: 8px; }
-.receipt-row:last-child { border-bottom: 0; }
-.receipt-row .sum { font-weight: 800; }
-.total-line { display: flex; justify-content: space-between; margin-top: 10px; font-weight: 800; font-size: 16px; }
 
 /* ---------- настройки ---------- */
 .setting-title { font-weight: 800; font-size: 16px; margin: 0 0 6px; }
@@ -309,10 +249,10 @@ details.recipe b { color: #3b4742; }
 .tabline button.active { background: var(--ink); color: var(--bg); }
 
 .form { display: grid; gap: 0; }
-.form .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
 .form .chk { display: flex; gap: 8px; align-items: center; font-size: 14px; margin: 4px 0 12px; }
 .form .chk input { width: auto; margin: 0; }
-.muted-block { font-size: 13px; color: var(--muted); margin: 6px 0 10px; }
+
 .sub-title { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--green-2); font-weight: 800; margin: 16px 2px 6px; }
 .badge-private { font-size: 12px; background: #efe9dd; color: #7a6a4a; padding: 2px 7px; border-radius: 999px; margin-left: 6px; font-weight: 700; }
 .pill-row { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -326,7 +266,6 @@ details.recipe b { color: #3b4742; }
 .li.unread { background: var(--unread); border-radius: 12px; }
 .new-pill { font-size: 12px; background: var(--green); color: #fff; padding: 2px 7px; border-radius: 999px; margin-left: 6px; font-weight: 700; }
 .hero-actions { display: flex; gap: 8px; }
-.sections button .ico { margin-right: 4px; font-size: 15px; }
 
 /* ---------- нижняя панель навигации ---------- */
 .app { padding-bottom: 112px; }

@@ -1,9 +1,8 @@
 // Новые разделы «Ассистента»: бюджет и лимиты, прогноз, подушка безопасности,
 // чеки (PDF, CSV, TXT, фото), голосовой ввод, списки, идеи и поездки, подарки, шаги, лента и отчёт.
 // Модуль не знает о DOM приложения напрямую: всё нужное передаётся через featuresInit(ctx).
-import { upcoming, addDays, daysBetween } from './core.js?v=c2';
-import { allOps } from './store.js?v=c2';
-import { readReceiptLines, parseReceiptLines } from './menu/planner.js?v=b9';
+import { addDays, daysBetween } from './core.js?v=c3';
+import { allOps } from './store.js?v=c3';
 
 let F = null;
 const S = () => F.S();
@@ -16,7 +15,6 @@ const svg = (name, size = 18) => F.svg(name, size);
 const X = () => svg('x', 18);
 const personName = (id) => ((S().people || []).find((p) => p.id === id) || {}).name || '';
 const fmtDate = (s) => { if (!s) return ''; const [y, m, d] = s.split('-'); return `${d}.${m}.${y}`; };
-const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 const MONTHS_SHORT = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 const monthTitle = (ym) => { const [y, m] = ym.split('-').map(Number); return new Date(y, m - 1, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }); };
 const shiftYm = (ym, k) => { const [y, m] = ym.split('-').map(Number); const d = new Date(y, m - 1 + k, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
@@ -76,65 +74,6 @@ export function ensureData(s) {
   s.incomes ||= [];
   s.incomeConfirmed ||= {};
   s.remCats ||= REM_CATS_DEFAULT();
-}
-
-// ---------- категории из текста (голос, чеки) ----------
-const HINTS = [
-  [/продукт|магазин|супермаркет|пят[её]роч|перекрест|магнит|ашан|лента|вкусвилл|азбук/i, 'Продукты'],
-  [/такси|бензин|топлив|метро|парковк|проезд|заправ/i, 'Транспорт'],
-  [/кафе|ресторан|кино|театр|доставк|развлеч/i, 'Развлечения'],
-  [/аптек|лекарств|врач|клиник|анализ/i, 'Здоровье'],
-  [/одежд|обув|куртк/i, 'Одежда'],
-  [/подарок|подарк/i, 'Подарки'],
-  [/коммунал|квартплат|жкх|электр|водоканал|отоплен/i, 'Коммуналка'],
-  [/интернет|связь|телефон|подписк|стриминг/i, 'Связь и подписки'],
-  [/аренд|ипотек/i, 'Жильё']
-];
-
-export function categoryFromText(text) {
-  const t = String(text || '');
-  const cats = S().categories.expense;
-  const hit = HINTS.find(([re]) => re.test(t));
-  if (hit && cats.includes(hit[1])) return hit[1];
-  return cats.find((c) => t.toLowerCase().includes(c.toLowerCase())) || 'Прочее';
-}
-
-// «потратил 850 на продукты» → сумма, категория, комментарий.
-export function parseSpoken(text) {
-  const t = String(text || '').replace(/ /g, ' ').trim();
-  const m = t.match(/(\d[\d ]*(?:[.,]\d+)?)/);
-  const amount = m ? parseFloat(m[1].replace(/ /g, '').replace(',', '.')) : '';
-  return { amount: isNaN(amount) ? '' : amount, category: categoryFromText(t), note: t };
-}
-
-// ---------- прогноз, подушка, итоги недели ----------
-function forecastHtml() {
-  const t = today();
-  const month = t.slice(0, 7);
-  const s = S();
-  const ops = visible();
-  const spent = sumExp(ops.filter((o) => o.date.startsWith(month)));
-  const income = sumInc(ops.filter((o) => o.date.startsWith(month)));
-  // Среднее за 30 дней без регулярных платежей: их учитываем отдельно, чтобы не считать дважды.
-  const dailyAvg = dailyAvgOf(ops, t);
-  const [y, m] = month.split('-').map(Number);
-  const dayNow = Number(t.slice(8));
-  const left = lastDay(y, m) - dayNow;
-  const unpaidRegular = s.recurring
-    .filter((r) => r.active && !s.confirmed[`${r.id}|${month}`])
-    .reduce((a, r) => a + (Number(r.amount) || 0), 0);
-  const end = spent + unpaidRegular + dailyAvg * left;
-  return `<div class="card"><div class="setting-title">Прогноз на ${monthTitle(month)}</div>
-    <div class="grid-2">
-      <div class="stat"><div class="lbl">Уже потрачено</div><div class="val">${money(spent)}</div></div>
-      <div class="stat"><div class="lbl">Расходы к концу месяца</div><div class="val neg">≈ ${money(end)}</div></div></div>
-    <p class="note" style="margin-top:8px">Доходов в месяце: ${money(income)}. Ещё запланировано: регулярные ${money(unpaidRegular)}. Остальное — среднее за 30 дней × оставшиеся дни.</p></div>`;
-}
-
-function liRow(x) {
-  return `<div class="li"><span class="dot ${x.kind}"></span>
-    <div class="main"><div class="t">${esc(x.title)}</div><div class="s">${fmtDate(x.date)}${x.personId ? ' · ' + esc(personName(x.personId)) : ''}</div></div>
-    ${x.amount ? `<div class="amt">${money(x.amount)}</div>` : ''}</div>`;
 }
 
 
@@ -282,12 +221,6 @@ function limEditHtml() {
     <div style="margin-top:12px"><button class="btn block" id="lim-save">Сохранить</button></div>`;
 }
 
-function barRows(rows, max) {
-  return rows.map((r) => `<div class="bar-row"><span class="bar-lbl">${esc(r.label)}</span>
-    <div class="bar-track"><div class="bar-fill" style="width:${max ? Math.round((r.value / max) * 100) : 0}%"></div></div>
-    <span class="bar-val">${money(r.value)}</span></div>`).join('');
-}
-
 // Период отчёта на вкладке «Год»: месяц или весь год. Выбор хранится до перезагрузки.
 let REPORT_PERIOD = null;
 
@@ -400,103 +333,11 @@ export function extraReminders(t, days) {
   return out;
 }
 
-// ---------- формы и действия ----------
-function openOperation(prefill) {
-  F.openForm('Новая операция', [
-    { k: 'type', t: 'select', l: 'Тип', opts: [['expense', 'Расход'], ['income', 'Доход']], v: 'expense' },
-    { k: 'amount', t: 'number', l: 'Сумма', ph: '0', v: prefill.amount },
-    { k: 'date', t: 'date', l: 'Дата', v: today() },
-    { k: 'category', t: 'select', l: 'Категория', opts: S().categories.expense.concat(S().categories.income).map((c) => [c, c]), v: prefill.category || 'Прочее' },
-    { k: 'account', t: 'select', l: 'Счёт', opts: S().accounts.map((a) => [a.id, a.name]), v: (S().accounts[0] || {}).id || '' },
-    { k: 'personId', t: 'select', l: 'Чей', opts: [['', 'Общее'], ...personOptsReal()], v: me() },
-    { k: 'private', t: 'check', l: 'Личное (видите только вы)', v: false },
-    { k: 'note', t: 'text', l: 'Комментарий', v: prefill.note || '' }
-  ], (o) => {
-    if (!o.amount || o.amount <= 0) return 'Введите сумму';
-    if (!o.date) return 'Укажите дату';
-    S().transactions.push({ id: uid(), type: o.type, amount: o.amount, date: o.date, category: o.category || 'Прочее',
-      account: o.account, personId: o.personId, private: o.private, note: o.note });
-    logEvent(`${o.type === 'income' ? 'Доход' : 'Расход'} ${money(o.amount)} · ${o.category}`);
-    return null;
-  });
-}
-
-function openVoice() {
-  F.openModal('Голосовой ввод', `<div class="form">
-    <p class="setting-desc">Скажите или напишите, например: «потратил 850 на продукты». Сумма и категория подставятся, их можно поправить.</p>
-    <textarea id="vo-text" rows="2" placeholder="Потратил 850 на продукты"></textarea>
-    <div class="pill-row"><button class="btn soft" id="vo-rec">${svg('mic', 18)} Говорить</button>
-    <button class="btn" id="vo-go">Дальше</button></div></div>`);
-  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-  document.getElementById('vo-rec').onclick = () => {
-    if (!Rec) return F.toast('Голосовой ввод недоступен в этом браузере. Напишите текстом.');
-    const r = new Rec();
-    r.lang = 'ru-RU';
-    r.interimResults = false;
-    r.onresult = (e) => { document.getElementById('vo-text').value = e.results[0][0].transcript; };
-    r.onerror = () => F.toast('Не расслышал, попробуйте ещё раз');
-    r.start();
-  };
-  document.getElementById('vo-go').onclick = () => {
-    const text = document.getElementById('vo-text').value;
-    if (!text.trim()) return F.toast('Скажите или напишите операцию');
-    openOperation(parseSpoken(text));
-  };
-}
-
-function openReceipt() {
-  F.openModal('Чек', `<div class="form">
-    <p class="setting-desc">Чек: PDF с текстом, CSV, TXT или фото (JPG, PNG, WebP). Фото распознаётся на устройстве и может ошибаться, проверьте сумму.</p>
-    <label class="btn soft block" style="cursor:pointer">Выбрать файл
-      <input id="rc-file" type="file" accept=".pdf,.csv,.txt,.jpg,.jpeg,.png,.webp,text/plain,application/pdf,image/*" class="hidden"></label>
-    <div id="rc-res"></div></div>`);
-  document.getElementById('rc-file').onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const res = document.getElementById('rc-res');
-    res.innerHTML = '<p class="muted">Читаю чек…</p>';
-    let parsed;
-    try {
-      parsed = parseReceiptLines(await readReceiptLines(file));
-    } catch (err) {
-      res.innerHTML = `<div class="warn-box">Не удалось прочитать файл: ${esc(err.message)}. Введите сумму вручную.</div>`;
-      parsed = { items: [], total: 0 };
-    }
-    const cats = S().categories.expense.map((c) => `<option value="${esc(c)}" ${c === 'Продукты' ? 'selected' : ''}>${esc(c)}</option>`).join('');
-    const who = [['', 'Общее'], ...personOptsReal()].map(([v, l]) => `<option value="${v}" ${v === me() ? 'selected' : ''}>${esc(l)}</option>`).join('');
-    res.innerHTML = `${parsed.items.length ? `<div class="sub-title">Найдено позиций: ${parsed.items.length}</div>` : ''}
-      <div class="form">
-        <label class="field" for="rc-date">Дата</label><input id="rc-date" type="date" value="${today()}">
-        <label class="field" for="rc-store">Магазин</label><input id="rc-store" placeholder="Например, Пятёрочка">
-        <label class="field" for="rc-total">Сумма, ₽</label><input id="rc-total" inputmode="decimal" value="${parsed.total ? String(parsed.total).replace('.', ',') : ''}">
-        <label class="field" for="rc-cat">Категория</label><select id="rc-cat">${cats}</select>
-        <label class="field" for="rc-who">Чей</label><select id="rc-who">${who}</select>
-        <button class="btn block" id="rc-save">Сохранить расход</button></div>`;
-    document.getElementById('rc-save').onclick = () => {
-      const total = parseFloat(String(document.getElementById('rc-total').value).replace(',', '.'));
-      if (!total || total <= 0) return F.toast('Введите сумму чека');
-      const store = document.getElementById('rc-store').value.trim();
-      S().transactions.push({
-        id: uid(), type: 'expense', amount: total, date: document.getElementById('rc-date').value || today(),
-        category: document.getElementById('rc-cat').value, account: (S().accounts[0] || {}).id || '',
-        personId: document.getElementById('rc-who').value, private: false,
-        note: `Чек${store ? ': ' + store : ''}`, items: parsed.items
-      });
-      logEvent(`Чек ${money(total)}${store ? ' · ' + store : ''}`);
-      F.closeModal();
-      F.toast('Чек сохранён');
-      F.render();
-    };
-  };
-}
-
 function simpleForm(title, fields, onSave) {
   F.openForm(title, fields, onSave);
 }
 
 export const FEATURE_ADD = {
-  voiceOp: () => openVoice(),
-  receiptOp: () => openReceipt(),
   addList: () => simpleForm('Новый список', [{ k: 'title', t: 'text', l: 'Название', ph: 'Продукты на выходные' }], (o) => {
     if (!o.title) return 'Введите название';
     S().lists.push({ id: uid(), title: o.title, items: [] });
@@ -573,7 +414,6 @@ export const FEATURE_ACTIONS = {
 // ---------- календарь напоминаний ----------
 let REM_MONTH = null;
 let REM_DAY = null;
-const KIND_TITLE = { rem: 'Напоминание', pay: 'Платёж', gift: 'Подарок', income: 'Поступление' };
 const CAL_DOW = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
 function ensureCalState() {

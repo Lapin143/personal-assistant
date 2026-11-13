@@ -1,10 +1,10 @@
 import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b9';
 import { featuresInit, budgetSettingsHtml, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, extraReminders,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
-  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=c2';
+  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=c3';
 import { api, authEnabled, signIn, signOutLocal, validToken, getSession, setAuthLostHandler, requestCount, economyMode, MONTH_LIMIT } from './api.js?v=c1';
-import { createSync, allOps, isClosed } from './store.js?v=c2';
-import { iso, todayIso, addDays, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js?v=c2';
+import { createSync, allOps, isClosed } from './store.js?v=c3';
+import { iso, todayIso, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js?v=c3';
 
 // ---------- помощники ----------
 const $ = (sel) => document.querySelector(sel);
@@ -51,7 +51,6 @@ const ICON = {
   left: '<path d="M15 6l-6 6 6 6"/>',
   right: '<path d="M9 6l6 6-6 6"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
-  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
   list: '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
   gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v9h14v-9M12 8v13M12 8c-2-4-6-4-6-1s6 1 6 1zM12 8c2-4 6-4 6-1s-6 1-6 1z"/>',
   walk: '<circle cx="13" cy="4" r="2"/><path d="M9 21l2-6 3 2v5M8 10l2-3 4 1 2 4M11 14l-2 2"/>',
@@ -64,6 +63,7 @@ const svg = (name, size = 22) => `<svg viewBox="0 0 24 24" width="${size}" heigh
 const X = svg('x', 18);
 
 function toast(msg, ms = 1800) {
+  document.querySelectorAll('.toast').forEach((x) => x.remove()); // новое сообщение заменяет предыдущее
   const t = document.createElement('div');
   t.className = 'toast';
   t.textContent = msg;
@@ -160,7 +160,6 @@ const opRow = (t) => (t.closed ? `<div class="li">
   <button class="icon-btn" data-act="del" data-coll="transactions" data-id="${t.id}" aria-label="Удалить">${X}</button></div>`);
 
 const CAR_TYPES = { fuel: 'Топливо', service: 'ТО', repair: 'Ремонт', wash: 'Мойка', parking: 'Парковка', fine: 'Штраф', other: 'Прочее' };
-const REPEAT = { none: 'однократно', month: 'каждый месяц', year: 'каждый год' };
 
 // ---------- регулярные платежи: операция появляется только после подтверждения ----------
 // Срок платежа в текущем месяце: день из настроек, но не позже последнего дня месяца.
@@ -574,16 +573,6 @@ const ADD = {
   ], (o) => {
     if (!o.title) return 'Введите название';
     S.wishes.push({ id: uid(), title: o.title, price: o.price || '', url: o.url, priority: Number(o.priority), personId: o.personId, bought: false });
-    return null;
-  }),
-  addRem: () => openForm('Напоминание', [
-    { k: 'title', t: 'text', l: 'Что напомнить' },
-    { k: 'date', t: 'date', l: 'Дата', v: todayIso() },
-    { k: 'repeat', t: 'select', l: 'Повтор', opts: Object.entries(REPEAT), v: 'none' },
-    { k: 'personId', t: 'select', l: 'Для кого', opts: personOpts(), v: '' }
-  ], (o) => {
-    if (!o.title || !o.date) return 'Введите название и дату';
-    S.reminders.push({ id: uid(), title: o.title, date: o.date, repeat: o.repeat, personId: o.personId });
     return null;
   }),
   addCar: () => openForm('Автомобиль', [

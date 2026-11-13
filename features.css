@@ -1,20 +1,17 @@
 /* Новые разделы: быстрые действия, бюджет, отчёты, списки, шаги */
-.quick{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px}
-.quick button{border:1px solid var(--row-line);background:var(--surface);color:inherit;border-radius:14px;padding:10px 4px;font:inherit;font-size:12px;cursor:pointer;min-height:44px}
-.quick button:focus-visible,.chk-add input:focus-visible{outline:3px solid #9cc7b8;outline-offset:2px}
+
+.chk-add input:focus-visible {outline:3px solid #9cc7b8;outline-offset:2px}
 .bud-row{padding:10px 0;border-bottom:1px solid var(--row-line)}
 .bud-row input{width:100%;margin-top:6px;padding:8px;border-radius:10px;border:1px solid var(--row-line);background:var(--surface);color:inherit;font:inherit}
 .bar.warn > div{background:#e0a044}
 .bar.over > div{background:#b5533c}
 .chk-add{display:flex;gap:8px;margin-top:10px}
 .chk-add input{flex:1;min-width:0;padding:10px;border-radius:10px;border:1px solid var(--row-line);background:var(--surface);color:inherit;font:inherit}
-.tbl{width:100%;border-collapse:collapse;font-size:14px}
-.tbl th,.tbl td{padding:6px 4px;text-align:right;border-bottom:1px solid var(--row-line)}
-.tbl th:first-child,.tbl td:first-child{text-align:left}
+
 .cat-row{display:grid;grid-template-columns:1fr auto auto;gap:8px;padding:7px 0;border-bottom:1px solid var(--row-line);font-size:14px}
 .report .sub-title{margin-top:14px}
 @media print{
-  .hero,.sections,.tabline,.no-print,.quick,.toast,.modal,#bell{display:none!important}
+  .hero,.sections,.tabline,.no-print,.toast,.modal,#bell {display:none!important}
   body{background:#fff;color:#000}
   .card{box-shadow:none;border:0;break-inside:avoid}
 }
@@ -37,7 +34,6 @@
 .cal-cell:focus-visible{outline:3px solid #9cc7b8;outline-offset:2px}
 .cal-bday{background:#c9a227}
 .cal-custom{background:#6b7f74}
-.money-main .forecast-row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--row-line)}
 
 /* Год: доходы и расходы по месяцам */
 .year-legend{display:flex;gap:14px;font-size:13px;color:var(--sub);margin:4px 0 6px}

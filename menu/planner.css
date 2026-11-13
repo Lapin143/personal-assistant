@@ -24,9 +24,7 @@
 [data-theme="dark"] .pill-bought{background:#5b9a84;color:#0f1f19}
 .warn-box{background:#fff4e0;color:#7a4a00;border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:14px}
 [data-theme="dark"] .warn-box{background:#3a2f1a;color:#f0c987}
-.shop-summary{background:var(--surface);border:1px solid var(--row-line);border-radius:14px;padding:14px;margin-bottom:12px}
-.shop-summary .bar{height:8px;background:var(--row-line);border-radius:999px;overflow:hidden;margin-top:10px}
-.shop-summary .bar > div{height:100%;background:#4c8474;transition:width .3s}
+
 .shop-card{background:var(--surface);border:1px solid var(--row-line);border-radius:14px;padding:4px 14px 6px;margin-bottom:10px}
 .shop-card h3{display:flex;align-items:center;gap:8px;font-size:15px;margin:10px 0 2px}
 .leg-dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex:0 0 auto}
