@@ -1,10 +1,10 @@
 import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b9';
 import { featuresInit, budgetSettingsHtml, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, extraReminders,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
-  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=c1';
+  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=c2';
 import { api, authEnabled, signIn, signOutLocal, validToken, getSession, setAuthLostHandler, requestCount, economyMode, MONTH_LIMIT } from './api.js?v=c1';
-import { createSync, allOps, isClosed } from './store.js?v=c1';
-import { iso, todayIso, addDays, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js?v=c1';
+import { createSync, allOps, isClosed } from './store.js?v=c2';
+import { iso, todayIso, addDays, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js?v=c2';
 
 // ---------- помощники ----------
 const $ = (sel) => document.querySelector(sel);

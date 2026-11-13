@@ -1,8 +1,8 @@
 // Новые разделы «Ассистента»: бюджет и лимиты, прогноз, подушка безопасности,
 // чеки (PDF, CSV, TXT, фото), голосовой ввод, списки, идеи и поездки, подарки, шаги, лента и отчёт.
 // Модуль не знает о DOM приложения напрямую: всё нужное передаётся через featuresInit(ctx).
-import { upcoming, addDays, daysBetween } from './core.js?v=c1';
-import { allOps } from './store.js?v=c1';
+import { upcoming, addDays, daysBetween } from './core.js?v=c2';
+import { allOps } from './store.js?v=c2';
 import { readReceiptLines, parseReceiptLines } from './menu/planner.js?v=b9';
 
 let F = null;

@@ -13,6 +13,7 @@
 export const CHUNK = 20000;            // длинный JSON делится на части такого размера
 const OVERLAP_MS = 300000;             // запас при запросе изменений: записи с пограничным временем не теряются
 const MIN_CHUNK = 2000;
+const KINDS = new Set(['tx', 'menu', 'list', 'settings', 'doc']); // строки других видов (добавленные вручную) приложение не трогает
 const FULL_EVERY_MS = 7 * 86400000;    // полная сверка раз в неделю
 const TOMB_KEEP_MS = 14 * 86400000;    // пометки об удалении живут 14 дней, потом строка удаляется совсем
 const BATCH = 40;
@@ -343,11 +344,28 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
     let changed = false;
     const t = now();
 
-    const incoming = pulled.records.map(normRemote).filter(Boolean)
+    const incoming = pulled.records.map(normRemote).filter((r) => r && KINDS.has(r.kind))
       .sort((a, b) => (a.deleted === b.deleted ? a.id - b.id : a.deleted ? -1 : 1)); // сначала пометки об удалении
+    // Защита данных на устройстве: непонятный ответ сервера не должен ничего удалять.
+    if (pulled.records.length && !pulled.records.some((x) => normRemote(x))) throw new Error('Сервер вернул записи в непонятном формате. Данные на устройстве не тронуты.');
+    // Облако пустое, а отсюда данные уже отправлялись: таблицу очистили. Локальные данные остаются и отправятся заново.
+    const wiped = pulled.full && !incoming.length && Object.keys(meta.rows).length > 0;
+    if (wiped) { meta.rows = {}; meta.tombs = {}; meta.kill = []; }
     // Размер частей длинного JSON должен быть одинаковым на всех устройствах: берём тот, которым записана самая свежая строка.
     const newest = incoming.filter((r) => !r.deleted && r.data && r.data.$chunks > 1 && typeof r.data.$p === 'string').sort((a, b) => b.updated - a.updated)[0];
     const learned = newest && newest.data.$p.length >= MIN_CHUNK ? newest.data.$p.length : 0;
+    // Полная сверка видит таблицу целиком. Ссылки на строки, которых там уже нет, сбрасываются заранее:
+    // строку могли удалить (тогда запись уйдёт и с устройства) или создать заново под новым номером (тогда она подхватится ниже).
+    const alive = new Set(incoming.filter((r) => !r.deleted).map((r) => r.id));
+    const stale = [];
+    if (pulled.full && !wiped) {
+      for (const [rk, m] of Object.entries(meta.rows)) {
+        if (alive.has(m.id)) continue;
+        stale.push(rk);
+        delete meta.rows[rk];
+      }
+    }
+
     for (const r of incoming) {
       remoteIds.add(r.id);
       const rk = `${r.kind}|${r.key}`;
@@ -361,8 +379,10 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
         }
         continue;
       }
-      // Две строки с одним ключом (два устройства создали раздел одновременно): остаётся строка с меньшим номером.
       if (m && m.id !== r.id) {
+        // По одной странице изменений не понять, дубль это или строку пересоздали: решает полная сверка.
+        if (!pulled.full) { meta.needFull = true; continue; }
+        // Две живые строки с одним ключом (два устройства создали раздел одновременно): остаётся строка с меньшим номером.
         const drop = Math.max(m.id, r.id);
         if (!meta.kill.includes(drop)) meta.kill.push(drop);
         if (r.id > m.id) continue;
@@ -383,13 +403,9 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
       }
     }
 
-    // Полная сверка: строки, которых в таблице больше нет, удалены на другом устройстве.
     if (pulled.full) {
-      for (const [rk, m] of Object.entries(meta.rows)) {
-        if (remoteIds.has(m.id)) continue;
-        delete meta.rows[rk];
-        if (rows.delete(rk)) changed = true;
-      }
+      // Строки, которых в таблице больше нет и которые никто не создал заново, удалены на другом устройстве.
+      for (const rk of stale) if (!meta.rows[rk] && rows.delete(rk)) changed = true;
       for (const id of Object.keys(meta.tombs)) if (!remoteIds.has(Number(id))) delete meta.tombs[id];
       meta.kill = meta.kill.filter((id) => remoteIds.has(id));
       meta.lastFull = t;
@@ -517,9 +533,17 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
     try {
       if (!getState()) throw new Error('нет данных');
       const full = Boolean(opts.full || meta.needFull || !meta.last || now() - (meta.lastFull || 0) > FULL_EVERY_MS);
-      const pulled = await pull(full);
+      let pulled = await pull(full);
       stats.requests += pulled.requests;
       stats.changed = apply(pulled);
+      // Страница изменений показала расхождение номеров строк: сразу сверяемся целиком, до отправки своих правок.
+      if (!pulled.full && meta.needFull) {
+        const serverNow = pulled.serverNow;
+        pulled = await pull(true);
+        pulled.serverNow = Math.min(serverNow, pulled.serverNow);
+        stats.requests += pulled.requests;
+        if (apply(pulled)) stats.changed = true;
+      }
       saveMeta();
       const pushed = await push(opts);
       stats.sent = pushed.sent;

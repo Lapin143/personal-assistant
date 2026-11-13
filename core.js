@@ -1,5 +1,5 @@
 // Общая логика «Ассистента». Без DOM: используется и в браузере, и в скрипте уведомлений.
-import { allOps } from './store.js?v=c1';
+import { allOps } from './store.js?v=c2';
 
 export const iso = (d) => {
   const z = new Date(d);

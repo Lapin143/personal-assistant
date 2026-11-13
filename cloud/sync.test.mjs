@@ -262,6 +262,52 @@ assert.ok(r.ok);
 assert.ok(!A.S.transactions.some((t) => t.id === 't1'));
 ok('полная сверка убирает то, что удалено в таблице вручную');
 
+// 12а. Чужие строки в таблице приложение не трогает
+T.rows.set(999001, { id: 999001, kind: 'заметка', key: 'ручная', title: 'добавлено руками', updated: clock + 1, deleted: 0, data: { x: 1 } });
+r = await A.go({ full: true });
+assert.ok(r.ok, r.error);
+assert.equal(r.sent, 0);
+assert.ok(T.rows.has(999001));
+T.rows.delete(999001);
+ok('строки, добавленные в таблицу вручную, не мешают и не удаляются');
+
+// 12б. Непонятный ответ сервера ничего не удаляет на устройстве
+{
+  const keep = T.fetch;
+  const txBefore = A.S.transactions.length;
+  T.fetch = async (url, init) => (init.method === 'GET' ? { status: 200, text: async () => JSON.stringify({ data: { records: [{ foo: 1 }, { bar: 2 }] } }) } : keep(url, init));
+  r = await A.go({ full: true });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /непонятном формате/);
+  assert.equal(A.S.transactions.length, txBefore);
+  T.fetch = keep;
+  r = await A.go();
+  assert.ok(r.ok, r.error);
+}
+ok('непонятный ответ сервера: ошибка, данные на устройстве целы');
+
+// 12в. Таблицу очистили: данные с устройства отправляются заново, а не стираются
+{
+  const snapshot = structuredClone(A.S);
+  const rowsWas = [...T.rows.values()].filter((x) => x.deleted !== 1).length;
+  T.rows.clear();
+  r = await A.go({ full: true });
+  assert.ok(r.ok, r.error);
+  same(A.S, snapshot);
+  assert.equal([...T.rows.values()].length, rowsWas);
+  // Второе устройство приходит с обычным запросом изменений и своей правкой: ничего не должно потеряться или задвоиться.
+  B.S.goals[0].saved += 1;
+  r = await B.go();
+  assert.ok(r.ok, r.error);
+  await A.go();
+  same(A.S, B.S);
+  assert.equal(A.S.goals[0].saved, B.S.goals[0].saved);
+  assert.equal([...T.rows.values()].filter((x) => x.deleted !== 1).length, rowsWas);
+  const keys = [...T.rows.values()].filter((x) => x.deleted !== 1).map((x) => `${x.kind}|${x.key}`);
+  assert.equal(new Set(keys).size, keys.length);
+}
+ok('очищенная таблица восстанавливается с устройства');
+
 // 13. Плохой токен Tabrica: ошибка, но данные и вход на месте
 T.badToken = true;
 A.S.transactions.push({ id: 't9', type: 'expense', amount: 10, date: '2026-11-28', category: 'Кафе' });

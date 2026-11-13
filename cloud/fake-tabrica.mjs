@@ -8,7 +8,9 @@ export function makeTabrica({ jsonAsString = false, rejectObjects = false, rowLi
   const t = { rows, requests: 0, log: [], rowLimit, badToken: false };
   const flat = (r) => ({ ...r, data: jsonAsString && r.data !== undefined && r.data !== null ? JSON.stringify(r.data) : r.data });
   const out = (r) => { if (!nested) return flat(r); const { id, ...fields } = flat(r); return { id, fields }; };
-  const tooBig = (body) => maxJson && body.data.data !== undefined && JSON.stringify(body.data.data).length > maxJson;
+  // Настоящая Табрика отклоняет строку длиннее 50 000 символов внутри JSON (public_invalid_data).
+  const longString = (v) => (typeof v === 'string' ? v.length > 50000 : v && typeof v === 'object' ? Object.values(v).some(longString) : false);
+  const tooBig = (body) => longString(body.data.data) || (maxJson && body.data.data !== undefined && JSON.stringify(body.data.data).length > maxJson);
   const cond = (expr) => {
     const m = /^\((\w+),(eq|gt|ge),(.*)\)$/.exec(expr);
     if (!m) throw new Error('where: ' + expr);
