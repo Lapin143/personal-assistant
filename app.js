@@ -1,9 +1,9 @@
 import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b11';
-import { featuresInit, budgetSettingsHtml, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, extraReminders,
+import { featuresInit, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, extraReminders,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
-  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=c6';
-import { api, authEnabled, signIn, signOutLocal, validToken, getSession, setAuthLostHandler, requestCount, economyMode, MONTH_LIMIT } from './api.js?v=c1';
-import { createSync, allOps, isClosed } from './store.js?v=c5';
+  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=c7';
+import { api, authEnabled, signIn, signOutLocal, validToken, getSession, setAuthLostHandler, requestCount, economyMode, MONTH_LIMIT } from './api.js?v=c2';
+import { createSync, allOps, isClosed } from './store.js?v=c6';
 import { iso, todayIso, daysBetween, upcoming, monthSummary, fuelStats, goalPct } from './core.js?v=c3';
 
 // ---------- помощники ----------
@@ -86,6 +86,7 @@ let ME = null;
 let SEC = 'dash';
 let FIN_MONTH = todayIso().slice(0, 7);
 let FIN_TAB = 'ops';
+let OPS_EXPANDED = false;
 let GOAL_KIND = 'long';
 let CAR_ID = null;
 
@@ -221,7 +222,7 @@ function viewDash() {
     <div class="tomorrow-card card"><div class="tomorrow-head"><div><div class="eyebrow">Завтра · ${fmtDate(tomorrow)}</div><div class="setting-title">Что впереди</div></div>
       <button class="btn soft" data-act="bell">Все уведомления</button></div>
       ${next.length ? next.slice(0, 1).map(liUp).join('') : '<div class="tomorrow-empty">Пока ничего не запланировано. Можно спокойно выдохнуть.</div>'}</div>
-    <div class="home-goals card"><div class="home-goals-head"><div><div class="eyebrow">Общие планы</div><div class="setting-title">Цели семьи</div></div>
+    <div class="home-goals card"><div class="home-goals-head"><div><div class="setting-title">Цели</div></div>
       <button class="btn soft" data-act="sec" data-v="goals">Все цели →</button></div>
       ${S.goals.length ? S.goals.slice(0, 2).map(goalRow).join('') : '<div class="tomorrow-empty">Поставьте первую цель и двигайтесь к ней вместе.</div>'}</div>
     `;
@@ -255,14 +256,16 @@ function viewFin() {
     const ops = allOps(S)
       .filter((t) => t.date.startsWith(FIN_MONTH) && (!t.private || t.personId === ME))
       .sort((a, b) => (a.date < b.date ? 1 : -1));
-    body += `<div class="card"><div class="setting-title">По категориям</div>
+      const shownOps = OPS_EXPANDED ? ops : ops.slice(0, 5);
+      body += `<div class="card"><div class="setting-title">По категориям</div>
       ${cats.length ? cats.map(([c, v]) => `<div style="margin:8px 0">
         <div class="row" style="justify-content:space-between"><span>${esc(c)}</span><b>${money(v)}</b></div>
         <div class="bar"><div style="width:${s.expense ? Math.round((v / s.expense) * 100) : 0}%"></div></div></div>`).join('')
         : '<div class="empty">Расходов нет</div>'}</div>
       <div class="card"><div class="row" style="justify-content:space-between">
         <div class="setting-title">Операции</div><button class="btn" data-act="addOp">+ Операция</button></div>
-        ${ops.length ? ops.map(opRow).join('') : '<div class="empty">Операций за месяц нет</div>'}</div>`;
+        ${ops.length ? shownOps.map(opRow).join('') : '<div class="empty">Операций за месяц нет</div>'}
+        ${ops.length > 5 ? `<button class="btn soft ops-toggle" data-act="opsToggle" aria-expanded="${OPS_EXPANDED}">${OPS_EXPANDED ? 'Свернуть список' : `Показать все операции · ${ops.length}`}</button>` : ''}</div>`;
   } else if (FIN_TAB === 'rec') {
     const monthly = S.recurring.filter((r) => r.active).reduce((a, r) => a + Number(r.amount), 0);
     body += pendingHtml();
@@ -396,8 +399,7 @@ function viewPeople() {
       <p class="setting-desc">Вошли как ${esc(getSession() ? getSession().login : '—')}. Выход удаляет данные с этого устройства, в облаке они остаются.</p>
       <div class="pill-row"><button class="btn soft" data-act="logout">Выйти</button></div></div>
 
-    <div class="sub-title">Финансы</div>
-    ${budgetSettingsHtml()}
+    <div class="sub-title">Счета и категории</div>
     <div class="card"><div class="row" style="justify-content:space-between"><div class="setting-title">Счета</div>
       <button class="btn soft" data-act="addAcc">+ Счёт</button></div>
       ${S.accounts.map((a) => `<div class="li"><div class="main"><div class="t">${esc(a.name)}</div>
@@ -599,7 +601,8 @@ const ACTIONS = {
   fullSync: () => { manualSync(true); return false; },
   closeMonth: (d) => { openCloseMonth(d.ym); return false; },
   sec: (d) => { SEC = d.v; },
-  finMonth: (d) => { FIN_MONTH = shiftMonth(FIN_MONTH, Number(d.d)); },
+  finMonth: (d) => { FIN_MONTH = shiftMonth(FIN_MONTH, Number(d.d)); OPS_EXPANDED = false; },
+  opsToggle: () => { OPS_EXPANDED = !OPS_EXPANDED; },
   finTab: (d) => { FIN_TAB = d.v; },
   goalKind: (d) => { GOAL_KIND = d.v; },
   carOpen: (d) => { CAR_ID = CAR_ID === d.id ? null : d.id; },
@@ -762,9 +765,21 @@ async function runSync({ full = false } = {}) {
   paintSync();
   const r = await SYNC.sync({ full });
   syncBusy = false;
-  if (r.ok) write('as.lastPull', Date.now());
+  if (r.ok) { write('as.lastPull', Date.now()); clearTimeout(quotaRetryTimer); quotaRetryTimer = null; }
+  else if (r.status === 429 && SYNC.pendingCount()) scheduleQuotaRetry();
   if (r.changed) renderSafe(); else paintSync();
   return r;
+}
+
+let quotaRetryTimer = null;
+function scheduleQuotaRetry() {
+  clearTimeout(quotaRetryTimer);
+  const now = new Date();
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 5, 0, 0);
+  quotaRetryTimer = setTimeout(() => {
+    quotaRetryTimer = null;
+    if (document.visibilityState === 'visible' && SYNC?.pendingCount() && !syncBusy) runSync();
+  }, Math.max(1000, nextMonth.getTime() - now.getTime()));
 }
 
 async function manualSync(full) {
@@ -847,15 +862,18 @@ function openCloseMonth(ym) {
     clearTimeout(pushTimer);
     syncBusy = true;
     paintSync();
-    const r = await SYNC.closeMonth(ym);
+    const r = await SYNC.closeMonth(ym, () => logEvent(`Закрыт месяц: ${monthName(ym)}`));
     syncBusy = false;
     write('as.data', S);
     if (r.ok) {
       closeModal();
-      logEvent(`Закрыт месяц: ${monthName(ym)}`);
-      save();
       render();
       toast(`Месяц закрыт: ${r.count} операций заменены итогами`, 3000);
+    } else if (r.localClosed) {
+      closeModal();
+      render();
+      if (r.status === 429) scheduleQuotaRetry();
+      toast(`Месяц закрыт на устройстве. ${r.error} Изменения отправятся автоматически после сброса лимита.`, 6000);
     } else {
       err.textContent = `Не удалось закрыть месяц: ${r.error}. Данные не потеряны, попробуйте позже.`;
       err.hidden = false;

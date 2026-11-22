@@ -159,11 +159,13 @@ function budgetHtml(month) {
       <div class="bar ${cls}"><div style="width:${Math.min(100, pct)}%"></div></div></div>`;
   }).join('');
   return `<div class="card"><div class="setting-title">Бюджет на ${monthTitle(month)}</div>
+      <p class="setting-desc">Сравнение плана и фактических расходов. Запланированные регулярные платежи показаны отдельно от уже проведённых операций.</p>
       ${tiles}
       <div class="sub-title">Расходы месяца</div>${meter}</div>
     <div class="card"><div class="setting-title">Категории</div>
-      <p class="setting-desc">Жёлтый — от 80% лимита, красный — лимит исчерпан. Лимиты меняются в «Настройки → Финансы».</p>
-      ${cats || '<div class="empty">Лимитов пока нет. Задайте их в настройках.</div>'}</div>
+      <p class="setting-desc">Предупреждение появляется при расходе 80% лимита; превышение отмечено красным.</p>
+      ${cats || '<div class="empty">За этот месяц трат нет. Здесь появится расход по категориям.</div>'}</div>
+    ${budgetSettingsHtml()}
     ${people ? `<div class="card"><div class="setting-title">Личные лимиты</div>
       <p class="setting-desc">Считаются только ваши и общие траты. Личные операции партнёра в расчёт не входят.</p>${people}</div>` : ''}`;
 }
@@ -177,26 +179,18 @@ export function budgetSettingsHtml() {
   const nxt = nextMonthYm();
   const pend = (s.budgetPlans || []).find((p) => p.from === nxt);
   const L = pend ? pend.budgets : cur.budgets;
-  const byCat = {};
-  for (const o of visible().filter((o) => o.date.startsWith(curYm) && o.type !== 'income')) byCat[o.category] = (byCat[o.category] || 0) + (Number(o.amount) || 0);
-  const withLimit = s.categories.expense.filter((c) => Number(L[c]) > 0);
-  const rows = withLimit.map((c) => {
-    const lim = Number(L[c]);
-    const sp = byCat[c] || 0;
-    const pct = Math.round((sp / lim) * 100);
-    const cls = pct >= 100 ? 'over' : pct >= 80 ? 'warn' : '';
-    return `<div class="bud-row">
-      <div class="row" style="justify-content:space-between"><span class="t">${esc(c)}</span>
-        <span class="note">${money(sp)} из ${money(lim)}</span></div>
-      <div class="bar ${cls}"><div style="width:${Math.min(100, pct)}%"></div></div></div>`;
-  }).join('');
-  const total = withLimit.reduce((a, c) => a + Number(L[c]), 0);
-  return `<div class="card">
-      <div class="row" style="justify-content:space-between;align-items:center">
-        <div class="setting-title" style="margin:0">Лимиты по тратам</div>
-        <button class="icon-btn" data-act="limEdit" aria-label="Изменить лимиты">${svg('gear', 18)}</button></div>
-      <p class="setting-desc">${pend ? 'Новые лимиты уже ждут ' + esc(monthTitle(nxt)) + '. ' : ''}Действуют с следующего месяца, текущий не меняется. Всего в месяц: ${money(total)}.</p>
-      ${rows || '<div class="empty">Лимитов нет. Нажмите шестерёнку, чтобы задать их.</div>'}
+  const cats = s.categories.expense.filter((c) => Number(L[c]) > 0).length;
+  const people = Object.values(pend ? pend.allowances || {} : cur.allowances || {}).filter((v) => Number(v) > 0).length;
+  const total = Object.values(L || {}).reduce((a, v) => a + (Number(v) || 0), 0);
+  return `<div class="card budget-settings">
+      <div class="budget-config-head"><div><div class="eyebrow">Планирование</div><div class="setting-title">Лимиты бюджета</div></div>
+        <button class="btn soft" data-act="limEdit">Настроить</button></div>
+      <p class="setting-desc">${pend ? `Подготовлен план на ${esc(monthTitle(nxt))}.` : `Текущие лимиты продолжат действовать в ${esc(monthTitle(nxt))}.`}
+        Изменения применяются со следующего месяца и не меняют прошлые расходы.</p>
+      <div class="budget-config-grid"><div><b>${money(total)}</b><span>лимиты по категориям в месяц</span></div>
+        <div><b>${cats}</b><span>${cats === 1 ? 'категория с лимитом' : 'категорий с лимитами'}</span></div>
+        <div><b>${people}</b><span>${people === 1 ? 'личный лимит' : 'личных лимитов'}</span></div></div>
+      ${cats ? '' : '<div class="empty">Лимиты пока не заданы. Можно планировать бюджет по категориям и участникам семьи.</div>'}
     </div>`;
 }
 

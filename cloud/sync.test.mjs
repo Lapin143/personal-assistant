@@ -217,19 +217,42 @@ ok(`библиотека блюд хранится частями (${parts.lengt
 const before = monthSummary(A.S, '2026-10', 'p1');
 const beforeOther = monthSummary(A.S, '2026-10', 'p2');
 const rowsBeforeClose = T.rows.size;
-r = await A.sync.closeMonth('2026-10');
+r = await A.sync.closeMonth('2026-10', (closed) => { closed.log.unshift({ id: 'close-log', text: 'Закрыт месяц' }); });
 assert.ok(r.ok, r.error);
+assert.equal(r.requests, 6, 'закрытие должно выполнить 1 чтение, 3 удаления и по одной записи итога и журнала');
 assert.equal(r.count, 3);
 assert.ok(!A.S.transactions.some((t) => t.date.startsWith('2026-10')));
 assert.equal(A.S.history_json['2026-10'].total_income, 90000);
 assert.equal(A.S.history_json['2026-10'].total_expense, 1200);
 assert.deepEqual(A.S.history_json['2026-10'].categories, { Продукты: 500, Транспорт: 700 });
-assert.equal(T.rows.size, rowsBeforeClose - 3 + 1);
+assert.equal(T.rows.size, rowsBeforeClose - 3 + 2);
 assert.deepEqual(monthSummary(A.S, '2026-10', 'p1'), before);
 assert.deepEqual(monthSummary(A.S, '2026-10', 'p2'), beforeOther); // личная операция p1 скрыта от p2 и после закрытия
 const hist = [...T.rows.values()].find((x) => x.key === 'history_json');
 assert.ok(hist && hist.data.v['2026-10']);
+assert.ok([...T.rows.values()].some((x) => x.key === 'log' && x.data.v.some((e) => e.id === 'close-log')));
 ok('закрытие месяца: итоги в history_json, строки удалены, суммы не изменились');
+
+// Исчерпание квоты не удаляет локальные изменения; после восстановления лимита очередь отправляется.
+{
+  const Q = makeTabrica();
+  const D = await makeDevice(Q, 'vlad', 'password-one', sample());
+  let qr = await D.go();
+  assert.ok(qr.ok, qr.error);
+  D.S.transactions.push({ id: 'quota-pending', type: 'expense', amount: 45, date: '2026-11-13', category: 'Продукты' });
+  Q.monthlyLimit = Q.requests + 1; // синхронизация прочитает состояние, запись встретит 429
+  qr = await D.go();
+  assert.equal(qr.ok, false);
+  assert.equal(qr.status, 429);
+  assert.ok(D.S.transactions.some((x) => x.id === 'quota-pending'));
+  assert.ok(D.sync.pendingCount() > 0);
+  Q.monthlyLimit = 0;
+  qr = await D.go();
+  assert.ok(qr.ok, qr.error);
+  assert.equal(D.sync.pendingCount(), 0);
+  assert.ok([...Q.rows.values()].some((x) => x.kind === 'tx' && x.key === 'quota-pending' && x.data && x.data.id === 'quota-pending'));
+  ok('после 429 локальная операция сохраняется и уходит после восстановления квоты');
+}
 
 // Второе устройство до синхронизации успело добавить операцию в закрываемый месяц
 B.S.transactions.push({ id: 'late', type: 'expense', amount: 100, date: '2026-10-30', category: 'Продукты' });
@@ -416,10 +439,10 @@ ok('работает при любом представлении JSON-поля 
   }
   const used = T3.requests - start;
   console.log(`   запросов к Tabrica за 30 дней (2 человека × 8 открытий и 6 изменений в день): ${used}, строк: ${T3.rows.size}`);
-  assert.ok(used < 3000, `бюджет превышен: ${used}`);
+  assert.ok(used < 1000, `бюджет превышен: ${used}`);
   await Q.go(); await P.go(); await Q.go();
   same(P.S, Q.S);
-  ok('месяц обычного использования укладывается в 3 000 запросов');
+  ok('месяц обычного использования укладывается в лимит 1 000 запросов');
 }
 
 console.log(`\nвсе ${n} проверок пройдены`);

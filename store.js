@@ -520,6 +520,7 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
         if (triedStr && sent === sentBeforeStr) { meta.jsonStr = false; saveMeta(); } // строкой тоже не принято: дело не в формате
         const err = new Error(errorText(failed));
         err.requests = requests;
+        err.status = failed.status;
         throw err;
       }
       if (!results.length) throw new Error('Сервер не выполнил ни одной операции');
@@ -556,6 +557,7 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
     } catch (err) {
       stats.requests += err.requests || 0;
       stats.error = err.message || String(err);
+      stats.status = err.status;
       stats.auth = Boolean(err.auth);
       lastError = stats.error;
       saveMeta();
@@ -571,7 +573,7 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
 
   // Закрытие месяца: итоги уходят в history_json, затем исходные операции удаляются из таблицы.
   // Порядок важен: сначала сохраняются итоги; если это не удалось, удаление не начинается.
-  async function closeMonth(ym) {
+  async function closeMonth(ym, onClosed = () => {}) {
     const S0 = getState();
     if (!/^\d{4}-\d{2}$/.test(ym)) return { ok: false, error: 'Некорректный месяц' };
     const first = await sync();
@@ -590,9 +592,26 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
     }
     next.updatedAt = now();
     setState(next);
+    onClosed(next);
+    setState(next);
     saveMeta();
-    const second = await sync();
-    return { ok: second.ok, error: second.error, count: txs.length, requests: first.requests + second.requests, summary: next.history_json[ym] };
+    let sent = 0;
+    let requests = first.requests;
+    try {
+      const pushed = await push();
+      sent = pushed.sent;
+      requests += pushed.requests;
+      meta.lastOk = now();
+      meta.last = now();
+      saveMeta();
+      lastError = '';
+      return { ok: true, count: txs.length, sent, requests, summary: next.history_json[ym] };
+    } catch (err) {
+      requests += err.requests || 0;
+      lastError = err.message || String(err);
+      saveMeta();
+      return { ok: false, error: lastError, status: err.status, localClosed: true, count: txs.length, sent, requests, summary: next.history_json[ym] };
+    }
   }
 
   return {

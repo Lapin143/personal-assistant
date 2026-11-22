@@ -215,3 +215,14 @@
 [data-theme="dark"] .sheet-grip { background: #59655c; }
 [data-theme="dark"] .modal { background: rgba(0, 0, 0, .64); }
 [data-theme="dark"] :focus-visible { outline-color: #a4cdaa; }
+
+.ops-toggle { width: 100%; margin-top: 10px; }
+.budget-settings { border-color: var(--line, #dfe8e1); }
+.budget-config-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.budget-config-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:14px; }
+.budget-config-grid > div { display:flex; flex-direction:column; gap:3px; padding:12px; border-radius:14px; background:var(--soft, #f1f5f1); }
+.budget-config-grid b { font-size:1.08rem; }
+.budget-config-grid span { color:var(--sub); font-size:.82rem; }
+@media (max-width:520px) { .budget-config-grid { grid-template-columns:1fr 1fr; } .budget-config-grid > div:first-child { grid-column:1/-1; } }
+[data-theme="dark"] .budget-config-grid > div { background:#202a23; }
+[data-theme="dark"] .budget-settings { border-color:#3a4a3e; }

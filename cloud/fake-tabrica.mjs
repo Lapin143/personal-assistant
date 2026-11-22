@@ -2,10 +2,10 @@
 import assert from 'node:assert/strict';
 
 // ---------- имитация Tabrica ----------
-export function makeTabrica({ jsonAsString = false, rejectObjects = false, rowLimit = 1000, maxJson = 0, nested = false, throttleEvery = 0 } = {}) {
+export function makeTabrica({ jsonAsString = false, rejectObjects = false, rowLimit = 1000, maxJson = 0, nested = false, throttleEvery = 0, monthlyLimit = 0 } = {}) {
   const rows = new Map();
   let nextId = 1;
-  const t = { rows, requests: 0, log: [], rowLimit, badToken: false };
+  const t = { rows, requests: 0, log: [], rowLimit, monthlyLimit, badToken: false };
   const flat = (r) => ({ ...r, data: jsonAsString && r.data !== undefined && r.data !== null ? JSON.stringify(r.data) : r.data });
   const out = (r) => { if (!nested) return flat(r); const { id, ...fields } = flat(r); return { id, fields }; };
   // Настоящая Табрика отклоняет строку длиннее 50 000 символов внутри JSON (public_invalid_data).
@@ -25,6 +25,7 @@ export function makeTabrica({ jsonAsString = false, rejectObjects = false, rowLi
   t.fetch = async (url, init) => {
     t.calls = (t.calls || 0) + 1;
     if (throttleEvery && t.calls % throttleEvery === 0) return { status: 429, text: async () => '{"error":"rate_limited"}' };
+    if (t.monthlyLimit && t.requests >= t.monthlyLimit) return { status: 429, text: async () => '{"error":"api_request_limit_exceeded"}' };
     t.requests++;
     const u = new URL(url);
     const m = /\/databases\/(\d+)\/tables\/(\d+)\/records(?:\/(\d+))?$/.exec(u.pathname);
