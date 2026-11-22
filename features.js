@@ -229,16 +229,21 @@ function yearHtml(month) {
   const y = month.slice(0, 4);
   const curYm = today().slice(0, 7);
   const ops = visible();
-  const regular = s.recurring.filter((r) => r.active).reduce((a, r) => a + (Number(r.amount) || 0), 0);
-  const incomePlan = s.incomes.filter((i) => i.active).reduce((a, i) => a + (Number(i.amount) || 0), 0);
   const rows = Array.from({ length: 12 }, (_, i) => {
     const ym = `${y}-${String(i + 1).padStart(2, '0')}`;
     const future = ym > curYm;
-    return { ym, label: MONTHS_SHORT[i], future, incPlan: incomePlan, incFact: sumInc(ops.filter((o) => o.date.startsWith(ym))), exp: regular };
+    const hist = s.history_json && s.history_json[ym];
+    const monthOps = ops.filter((o) => o.date.startsWith(ym));
+    const planVisible = !hist && ym >= curYm;
+    return { ym, label: MONTHS_SHORT[i], future, closed: Boolean(hist),
+      incPlan: planVisible ? s.incomes.filter((x) => x.active).reduce((a, x) => a + (Number(x.amount) || 0), 0) : 0,
+      incFact: hist ? Number(hist.total_income) || 0 : sumInc(monthOps),
+      exp: planVisible ? s.recurring.filter((x) => x.active).reduce((a, x) => a + (Number(x.amount) || 0), 0) : 0,
+      expenseFact: hist ? Number(hist.total_expense) || 0 : sumExp(monthOps) };
   });
   const yearPlan = rows.reduce((a, r) => a + r.incPlan, 0);
   const yearFact = rows.reduce((a, r) => a + (r.future ? 0 : r.incFact), 0);
-  const max = Math.max(1, ...rows.flatMap((r) => [r.incPlan, r.incFact, r.exp]));
+  const max = Math.max(1, ...rows.flatMap((r) => [r.incPlan, r.incFact, r.exp, r.expenseFact]));
   const pct = (v) => Math.round((v / max) * 100);
   const period = REPORT_PERIOD && REPORT_PERIOD.startsWith(y) ? REPORT_PERIOD : month;
   const options = [[y, `Весь ${y} год`], ...rows.map((r) => [r.ym, monthTitle(r.ym)])]
@@ -248,13 +253,13 @@ function yearHtml(month) {
         <button class="icon-btn" data-act="finMonth" data-d="-12" aria-label="Предыдущий год">${svg('left', 18)}</button>
         <div class="setting-title" style="margin:0">Доходы и расходы, ${y}</div>
         <button class="icon-btn" data-act="finMonth" data-d="12" aria-label="Следующий год">${svg('right', 18)}</button></div>
-      <p class="setting-desc">Доходы: план — регулярные поступления, факт — все поступления в месяце. Расходы — план по регулярным платежам.</p>
-      <div class="year-legend"><span><i class="lg inc plan"></i>Доход, план</span><span><i class="lg inc"></i>Доход, факт</span><span><i class="lg exp"></i>Расход, план</span></div>
+      <p class="setting-desc">Закрытые месяцы показывают фактические итоги. План отображается для текущего и будущих месяцев.</p>
+      <div class="year-legend"><span><i class="lg inc plan"></i>Доход, план</span><span><i class="lg inc"></i>Доход, факт</span><span><i class="lg exp"></i>Расход, план или факт</span></div>
       ${rows.map((r) => `<div class="year-row"><span class="ym">${r.label}</span>
         <div class="year-bars">
           <div class="yb-track"><div class="yb inc plan" style="width:${pct(r.incPlan)}%"></div>${r.future ? '' : `<div class="yb inc" style="width:${pct(r.incFact)}%"></div>`}</div>
-          <div class="yb-track"><div class="yb exp" style="width:${pct(r.exp)}%"></div></div></div>
-        <span class="yv"><span class="inc-t">${r.future ? '—' : money(r.incFact)}</span> <span class="plan-t">из ${money(r.incPlan)}</span><br><span class="exp-t">${money(r.exp)}</span></span></div>`).join('')}
+          <div class="yb-track"><div class="yb exp" style="width:${pct(r.closed ? r.expenseFact : r.exp)}%"></div></div></div>
+        <span class="yv"><span class="inc-t">${r.future ? '—' : money(r.incFact)}</span> <span class="plan-t">${r.incPlan ? 'из ' + money(r.incPlan) : (r.closed ? '· факт' : '')}</span><br><span class="exp-t">${money(r.closed ? r.expenseFact : r.exp)}${r.closed ? ' · факт' : ''}</span></span></div>`).join('')}
       <div class="year-total"><span>Доходы за год</span><span><span class="inc-t">${money(yearFact)}</span> <span class="plan-t">из ${money(yearPlan)}</span></span></div>
     </div>
     <div class="card">
@@ -271,6 +276,7 @@ function reportHtml(period) {
   const ops = visible().filter((o) => o.date.startsWith(period));
   const income = sumInc(ops);
   const expense = sumExp(ops);
+  const balance = income - expense;
   const byCat = {};
   for (const o of ops.filter((x) => x.type !== 'income')) byCat[o.category] = (byCat[o.category] || 0) + (Number(o.amount) || 0);
   const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
@@ -281,6 +287,7 @@ function reportHtml(period) {
     <div class="grid-2" style="margin:12px 0">
       <div class="stat"><div class="lbl">Доходы</div><div class="val pos">${money(income)}</div></div>
       <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(expense)}</div></div></div>
+    <div class="stat"><div class="lbl">Разница доходов и расходов</div><div class="val ${balance >= 0 ? 'pos' : 'neg'}">${balance >= 0 ? '+' : '−'}${money(Math.abs(balance))}</div><div class="note">${income ? `Сбережено ${Math.round(balance / income * 100)}% дохода` : 'Доходов за период нет'}</div></div>
     <div class="sub-title">Категории</div>
     ${cats.length ? cats.map(([c, v]) => {
       const lim = Number(limitsFor(period.length === 7 ? period : today().slice(0, 7)).budgets[c]) || 0;

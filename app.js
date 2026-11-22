@@ -1,10 +1,10 @@
 import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b9';
 import { featuresInit, budgetSettingsHtml, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, extraReminders,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
-  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=c3';
+  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=c4';
 import { api, authEnabled, signIn, signOutLocal, validToken, getSession, setAuthLostHandler, requestCount, economyMode, MONTH_LIMIT } from './api.js?v=c1';
-import { createSync, allOps, isClosed } from './store.js?v=c3';
-import { iso, todayIso, daysBetween, upcoming, monthSummary, fuelStats, debtMonths, goalPct } from './core.js?v=c3';
+import { createSync, allOps, isClosed } from './store.js?v=c4';
+import { iso, todayIso, daysBetween, upcoming, monthSummary, fuelStats, goalPct } from './core.js?v=c3';
 
 // ---------- помощники ----------
 const $ = (sel) => document.querySelector(sel);
@@ -238,7 +238,7 @@ function viewFin() {
   const stats = `<div class="grid-2" style="margin-bottom:12px">
     <div class="stat"><div class="lbl">Доходы</div><div class="val pos">${money(s.income)}</div></div>
     <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(s.expense)}</div></div></div>`;
-  const tabs = `<div class="tabline">${[['ops', 'Операции'], ['rec', 'Регулярные'], FIN_TABS[0], ['debt', 'Кредиты'], ...FIN_TABS.slice(1)]
+  const tabs = `<div class="tabline">${[['ops', 'Операции'], ['rec', 'Регулярные'], ...FIN_TABS]
     .map(([v, l]) => `<button class="${FIN_TAB === v ? 'active' : ''}" data-act="finTab" data-v="${v}">${l}</button>`).join('')}</div>`;
 
   if (isFinExtraTab(FIN_TAB)) return top + stats + tabs + finTabHtml(FIN_TAB, FIN_MONTH);
@@ -270,20 +270,6 @@ function viewFin() {
         <button class="icon-btn" data-act="del" data-coll="recurring" data-id="${r.id}" aria-label="Удалить">${X}</button></div>`).join('')
         : '<div class="empty">Регулярных платежей нет</div>'}
       <p class="note">Итого в месяц: ${money(monthly)}</p></div>`;
-  } else {
-    body += `<div class="card"><div class="row" style="justify-content:space-between">
-      <div class="setting-title">Кредиты</div><button class="btn" data-act="addDebt">+ Кредит</button></div>
-      ${S.debts.length ? S.debts.map((d) => {
-        const m = debtMonths(d.remaining, d.monthly);
-        const paid = d.total ? Math.round((1 - d.remaining / d.total) * 100) : 0;
-        return `<div class="li" style="display:block">
-          <div class="row" style="justify-content:space-between"><div class="t">${esc(d.title)}</div><b>${money(d.remaining)}</b></div>
-          <div class="s">Платёж ${money(d.monthly)} · ${d.dueDay}-го числа${m ? ` · осталось около ${m} мес.` : ''}</div>
-          <div class="bar"><div style="width:${paid}%"></div></div>
-          <div class="row" style="margin-top:8px">
-            <button class="btn soft" data-act="payDebt" data-id="${d.id}">Внести платёж</button>
-            <button class="icon-btn" data-act="del" data-coll="debts" data-id="${d.id}" aria-label="Удалить">${X}</button></div></div>`;
-      }).join('') : '<div class="empty">Кредитов нет</div>'}</div>`;
   }
   return top + stats + tabs + body;
 }
@@ -540,18 +526,6 @@ const ADD = {
       category: o.category, account: o.account, personId: o.personId, active: true });
     return null;
   }),
-  addDebt: () => openForm('Кредит', [
-    { k: 'title', t: 'text', l: 'Название' },
-    { k: 'total', t: 'number', l: 'Сумма кредита' },
-    { k: 'remaining', t: 'number', l: 'Остаток сейчас (если пусто, равен сумме)' },
-    { k: 'monthly', t: 'number', l: 'Ежемесячный платёж' },
-    { k: 'dueDay', t: 'number', l: 'День платежа (1–31)', v: 10 }
-  ], (o) => {
-    if (!o.title || !need(o, ['total', 'monthly'])) return 'Заполните название, сумму и платёж';
-    const rem = o.remaining === '' ? o.total : o.remaining;
-    S.debts.push({ id: uid(), title: o.title, total: o.total, remaining: rem, monthly: o.monthly, dueDay: o.dueDay || 10 });
-    return null;
-  }),
   addGoal: () => openForm('Новая цель', [
     { k: 'kind', t: 'select', l: 'Тип', opts: [['long', 'Долгосрочная'], ['short', 'Краткосрочная']], v: GOAL_KIND === 'short' ? 'short' : 'long' },
     { k: 'title', t: 'text', l: 'Название' },
@@ -667,17 +641,6 @@ const ACTIONS = {
     openForm('Пополнить: ' + g.title, [{ k: 'amt', t: 'number', l: 'Сумма' }], (o) => {
       if (!o.amt || o.amt <= 0) return 'Введите сумму';
       g.saved = (g.saved || 0) + o.amt;
-      return null;
-    });
-    return false;
-  },
-  payDebt: (d) => {
-    const debt = S.debts.find((x) => x.id === d.id);
-    openForm('Платёж: ' + debt.title, [{ k: 'amt', t: 'number', l: 'Сумма платежа', v: debt.monthly }], (o) => {
-      if (!o.amt || o.amt <= 0) return 'Введите сумму';
-      debt.remaining = Math.max(0, debt.remaining - o.amt);
-      S.transactions.push({ id: uid(), type: 'expense', amount: o.amt, date: todayIso(), category: 'Прочее',
-        account: '', personId: '', private: false, note: `Платёж по долгу: ${debt.title}` });
       return null;
     });
     return false;

@@ -578,7 +578,8 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
     if (!first.ok) return { ok: false, error: first.error || 'Нет связи с сервером' };
     const S = getState() || S0;
     const txs = (S.transactions || []).filter((t) => String(t.date || '').startsWith(ym));
-    if (!txs.length && !isClosed(S, ym)) return { ok: false, error: 'В этом месяце нет операций' };
+    if (!txs.length && isClosed(S, ym)) return { ok: true, count: 0, summary: S.history_json[ym], requests: first.requests };
+    if (!txs.length) return { ok: false, error: 'В этом месяце нет операций' };
     const next = { ...S };
     next.history_json = { ...(S.history_json || {}) };
     next.history_json[ym] = { ...mergeSummary(S.history_json && S.history_json[ym], summarize(txs)), closed_at: new Date(now()).toISOString() };
