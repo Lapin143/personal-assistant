@@ -424,6 +424,7 @@ input[type="checkbox"] { width: auto; flex: 0 0 auto; }
 .home-flow b { color:#fff; }
 .home-spend-track { background:#ffffff38; }
 .home-finance .home-spend-track i { background:#e0bf8e; }
+.home-finance .home-balance strong.neg { color:#ffe0b8; }
 .today-menu { border-color:#e7ece8; background:#fff; }
 .today-menu-head .setting-title { color:var(--ink); }
 .today-meals .li { border-color:#e9eee9; }

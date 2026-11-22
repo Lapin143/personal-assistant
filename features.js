@@ -660,7 +660,7 @@ export function dashTop() {
   const balance = income - expense;
   const spendPct = income ? Math.min(100, Math.max(0, Math.round(expense / income * 100))) : 0;
   return `<section class="home-finance card">
-    <div class="home-finance-head"><div><div class="eyebrow">Финансы семьи</div><div class="setting-title" style="margin:2px 0 0">${esc(monthTitle(month))}</div></div>
+    <div class="home-finance-head"><div><div class="eyebrow">Финансы</div><div class="setting-title" style="margin:2px 0 0">${esc(monthTitle(month))}</div></div>
       <button class="btn soft" data-act="sec" data-v="fin">Обзор →</button></div>
     <div class="home-balance"><span>Разница доходов и расходов</span><strong class="${balance >= 0 ? 'pos' : 'neg'}">${balance >= 0 ? '+' : '−'}${money(Math.abs(balance))}</strong></div>
     <div class="home-flow"><div><span>Пришло</span><b>${money(income)}</b><small>≈ ${money(incomeEnd)} к концу месяца</small></div>
