@@ -77,7 +77,7 @@ function applyTheme(mode) {
   const dark = mode === 'dark';
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.content = dark ? '#121614' : '#2f5d50';
+  if (meta) meta.content = dark ? '#141a16' : '#2f5d50';
 }
 
 // ---------- состояние ----------
