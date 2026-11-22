@@ -1,9 +1,9 @@
-import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b9';
+import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b10';
 import { featuresInit, budgetSettingsHtml, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, extraReminders,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
-  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=c4';
+  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=c5';
 import { api, authEnabled, signIn, signOutLocal, validToken, getSession, setAuthLostHandler, requestCount, economyMode, MONTH_LIMIT } from './api.js?v=c1';
-import { createSync, allOps, isClosed } from './store.js?v=c4';
+import { createSync, allOps, isClosed } from './store.js?v=c5';
 import { iso, todayIso, daysBetween, upcoming, monthSummary, fuelStats, goalPct } from './core.js?v=c3';
 
 // ---------- помощники ----------
@@ -211,15 +211,19 @@ function pendingHtml() {
 
 // ---------- разделы ----------
 function viewDash() {
-  const t = todayIso();
-  const up = upcoming(S, t, 14);
+  const tomorrowDate = new Date();
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrow = iso(tomorrowDate);
+  const next = upcoming(S, todayIso(), 1).filter((event) => event.date === tomorrow && !event.overdue);
   return `
-    ${dashTop()}
     ${plannerSummaryHtml()}
-    <div class="card"><div class="setting-title">Ближайшие 14 дней</div>
-      ${up.length ? up.map(liUp).join('') : '<div class="empty">Ничего не запланировано</div>'}</div>
-    <div class="card"><div class="setting-title">Цели</div>
-      ${S.goals.length ? S.goals.slice(0, 3).map(goalRow).join('') : '<div class="empty">Целей пока нет</div>'}</div>
+    ${dashTop()}
+    <div class="tomorrow-card card"><div class="tomorrow-head"><div><div class="eyebrow">Завтра · ${fmtDate(tomorrow)}</div><div class="setting-title">Что впереди</div></div>
+      <button class="btn soft" data-act="bell">Все уведомления</button></div>
+      ${next.length ? next.slice(0, 1).map(liUp).join('') : '<div class="tomorrow-empty">Пока ничего не запланировано. Можно спокойно выдохнуть.</div>'}</div>
+    <div class="home-goals card"><div class="home-goals-head"><div><div class="eyebrow">Общие планы</div><div class="setting-title">Цели семьи</div></div>
+      <button class="btn soft" data-act="sec" data-v="goals">Все цели →</button></div>
+      ${S.goals.length ? S.goals.slice(0, 2).map(goalRow).join('') : '<div class="tomorrow-empty">Поставьте первую цель и двигайтесь к ней вместе.</div>'}</div>
     `;
 }
 
@@ -231,13 +235,16 @@ function viewFin() {
     : rawCount ? `<div class="row close-bar"><span class="note">${isClosed(S, FIN_MONTH) ? 'Месяц закрыт, есть новые операции' : 'Операций за месяц'}: ${rawCount}</span>
         <button class="btn soft" data-act="closeMonth" data-ym="${FIN_MONTH}">Закрыть месяц</button></div>`
       : isClosed(S, FIN_MONTH) ? `<div class="row close-bar"><span class="pill pill-confirmed">Месяц закрыт</span><span class="note">Хранятся итоги по категориям</span></div>` : '';
-  const top = `<div class="row" style="justify-content:space-between;margin-bottom:10px">
+  const top = `<div class="fin-monthbar card">
     <button class="icon-btn" data-act="finMonth" data-d="-1" aria-label="Предыдущий месяц">${svg('left', 18)}</button>
-    <strong style="text-transform:capitalize">${monthName(FIN_MONTH)}</strong>
+    <div><div class="eyebrow">Семейный бюджет</div><strong>${monthName(FIN_MONTH)}</strong></div>
     <button class="icon-btn" data-act="finMonth" data-d="1" aria-label="Следующий месяц">${svg('right', 18)}</button></div>${closeBar}`;
-  const stats = `<div class="grid-2" style="margin-bottom:12px">
-    <div class="stat"><div class="lbl">Доходы</div><div class="val pos">${money(s.income)}</div></div>
-    <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(s.expense)}</div></div></div>`;
+  const net = s.income - s.expense;
+  const spendShare = s.income ? Math.min(100, Math.max(0, Math.round(s.expense / s.income * 100))) : 0;
+  const stats = `<div class="fin-overview card">
+    <div class="fin-net-label">Остаток по операциям за месяц</div><div class="fin-net ${net >= 0 ? 'pos' : 'neg'}">${net >= 0 ? '+' : '−'}${money(Math.abs(net))}</div>
+    <div class="fin-stats"><div><span>Доходы</span><b class="pos">${money(s.income)}</b></div><div><span>Расходы</span><b class="neg">${money(s.expense)}</b></div></div>
+    <div class="fin-share"><div class="home-spend-track"><i style="width:${spendShare}%"></i></div><span>Расходы составляют ${spendShare}% доходов</span></div></div>`;
   const tabs = `<div class="tabline">${[['ops', 'Операции'], ['rec', 'Регулярные'], ...FIN_TABS]
     .map(([v, l]) => `<button class="${FIN_TAB === v ? 'active' : ''}" data-act="finTab" data-v="${v}">${l}</button>`).join('')}</div>`;
 
@@ -282,17 +289,15 @@ function goalCard(g) {
     const months = Math.max(1, Math.ceil(daysBetween(todayIso(), g.deadline) / 30));
     perMonth = left / months;
   }
-  return `<div class="card">
-    <div class="row" style="justify-content:space-between">
-      <div><div class="setting-title" style="margin:0">${esc(g.title)}</div>
-      <div class="note">${personName(g.personId) || 'Общая'}${g.deadline ? ' · до ' + fmtDate(g.deadline) : ''}</div></div>
+  return `<article class="goal-card card">
+    <div class="goal-card-head"><div class="goal-mark">✦</div><div class="goal-title"><div class="setting-title">${esc(g.title)}</div>
+      <div class="note">${personName(g.personId) || 'Общая цель'}${g.deadline ? ' · до ' + fmtDate(g.deadline) : ''}</div></div>
       <button class="icon-btn" data-act="del" data-coll="goals" data-id="${g.id}" aria-label="Удалить">${X}</button></div>
-    <div class="row" style="justify-content:space-between;margin-top:10px"><b>${money(g.saved)}</b>
-      <span class="note">из ${money(g.target)} · ${pct}%</span></div>
-    <div class="bar"><div style="width:${pct}%"></div></div>
-    ${perMonth !== null && left > 0 ? `<div class="note" style="margin-top:6px">Откладывать около ${money(perMonth)} в месяц</div>` : ''}
-    <div class="row" style="margin-top:10px"><button class="btn soft" data-act="topUp" data-id="${g.id}">Пополнить</button></div>
-  </div>`;
+    <div class="goal-amounts"><strong>${money(g.saved)}</strong><span>${pct}%</span></div>
+    <div class="goal-track"><i style="width:${pct}%"></i></div>
+    <div class="goal-footer"><span>Осталось ${money(left)}${perMonth !== null && left > 0 ? ' · ~' + money(perMonth) + '/мес.' : ''}</span>
+      <button class="btn soft" data-act="topUp" data-id="${g.id}">Пополнить +</button></div>
+  </article>`;
 }
 
 function viewGoals() {
@@ -469,8 +474,10 @@ function render() {
   if (!S) return;
   renderPending = false;
   ensureData(S);
-  $('#hero-title').textContent = TITLE[SEC];
-  $('#hero-sub').textContent = `${fmtDate(todayIso())} · ${personName(ME) || 'Гость'}`;
+  const todayLabel = new Intl.DateTimeFormat('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
+  $('#hero-kicker').textContent = SEC === 'dash' ? todayLabel : 'Семейный ассистент';
+  $('#hero-title').textContent = SEC === 'dash' ? `Добрый день, ${personName(ME) || 'Гость'}` : TITLE[SEC];
+  $('#hero-sub').textContent = SEC === 'dash' ? '' : `${fmtDate(todayIso())} · ${personName(ME) || 'Гость'}`;
   $('#sections').innerHTML = NAV.map(([id, ic, label]) => {
     const active = id === 'more' ? MORE_SECTIONS.includes(SEC) : SEC === id;
     return `<button class="${active ? 'active' : ''}" data-act="sec" data-v="${id}" aria-label="${label}"${active ? ' aria-current="page"' : ''}>${svg(ic, 24)}<span>${label}</span></button>`;

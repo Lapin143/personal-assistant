@@ -91,16 +91,14 @@ export function cushionHtml() {
   const target = avg * s.cushion.months;
   const saved = Number(s.cushion.saved) || 0;
   const pct = target ? Math.min(100, Math.round((saved / target) * 100)) : 0;
-  return `<div class="card">
-    <div class="row" style="justify-content:space-between"><div>
-      <div class="setting-title" style="margin:0">Подушка безопасности</div>
-      <div class="note">${s.cushion.months} мес. расходов${avg ? ' · средний расход ' + money(avg) + ' в месяц' : ''}</div></div>
-      <button class="btn soft" data-act="cushionSet">Срок</button></div>
-    <div class="row" style="justify-content:space-between;margin-top:10px"><b>${money(saved)}</b>
-      <span class="note">из ${money(target)} · ${pct}%</span></div>
-    <div class="bar"><div style="width:${pct}%"></div></div>
-    ${avg ? '' : '<div class="note" style="margin-top:6px">Цель появится, когда накопится статистика трат за 3 месяца.</div>'}
-    <div class="row" style="margin-top:10px"><button class="btn soft" data-act="cushionTopUp">Пополнить</button></div></div>`;
+  return `<section class="cushion-card card">
+    <div class="cushion-head"><div><div class="eyebrow">Финансовая опора</div><div class="setting-title">Подушка безопасности</div></div>
+      <button class="icon-btn" data-act="cushionSet" aria-label="Настроить срок">⚙</button></div>
+    <div class="cushion-total">${money(saved)} <span>из ${money(target)}</span></div>
+    <div class="goal-track"><i style="width:${pct}%"></i></div>
+    <div class="cushion-caption">${s.cushion.months} мес. расходов · ${pct}% накоплено${avg ? ' · средний расход ' + money(avg) + '/мес.' : ''}</div>
+    ${avg ? '' : '<div class="note" style="margin-top:6px">Ориентир появится после накопления статистики трат за 3 месяца.</div>'}
+    <button class="btn" data-act="cushionTopUp">Пополнить подушку&nbsp; +</button></section>`;
 }
 
 // ---------- Финансы: бюджет, год, отчёт ----------
@@ -659,15 +657,17 @@ export function dashTop() {
   const incomeLeft = s.incomes.filter((i) => i.active && !s.incomeConfirmed[`${i.id}|${month}`])
     .reduce((a, i) => a + (Number(i.amount) || 0), 0);
   const incomeEnd = income + incomeLeft;
-  return `<div class="card money-main">
-    <div class="row" style="justify-content:space-between"><div class="setting-title" style="margin:0">Доходы и расходы</div>
-      <span class="note">${monthTitle(month)}</span></div>
-    <div class="grid-2" style="margin-top:10px">
-      <div class="stat"><div class="lbl">Доходы</div><div class="val pos">${money(income)}</div>
-        <div class="note">≈ ${money(incomeEnd)} к концу месяца</div></div>
-      <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(expense)}</div>
-        <div class="note">≈ ${money(end)} к концу месяца</div></div></div>
-    <p class="note" style="margin:8px 0 0">Прогноз: запланированные платежи и поступления плюс среднее за 30 дней на ${left} дн.</p></div>`;
+  const balance = income - expense;
+  const spendPct = income ? Math.min(100, Math.max(0, Math.round(expense / income * 100))) : 0;
+  return `<section class="home-finance card">
+    <div class="home-finance-head"><div><div class="eyebrow">Финансы семьи</div><div class="setting-title" style="margin:2px 0 0">${esc(monthTitle(month))}</div></div>
+      <button class="btn soft" data-act="sec" data-v="fin">Обзор →</button></div>
+    <div class="home-balance"><span>Разница доходов и расходов</span><strong class="${balance >= 0 ? 'pos' : 'neg'}">${balance >= 0 ? '+' : '−'}${money(Math.abs(balance))}</strong></div>
+    <div class="home-flow"><div><span>Пришло</span><b>${money(income)}</b><small>≈ ${money(incomeEnd)} к концу месяца</small></div>
+      <div><span>Потрачено</span><b>${money(expense)}</b><small>≈ ${money(end)} к концу месяца</small></div></div>
+    <div class="home-spend-track"><i style="width:${spendPct}%"></i></div>
+    <div class="note">${left ? `Прогноз учитывает платежи и поступления; до конца месяца ${left} дн.` : 'Итог за текущий месяц'}</div>
+  </section>`;
 }
 
 function reportText(month) {

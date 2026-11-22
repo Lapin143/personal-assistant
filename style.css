@@ -328,3 +328,112 @@ input[type="checkbox"] { width: auto; flex: 0 0 auto; }
 .cat-li { display: flex; align-items: center; gap: 10px; }
 .cat-li .cat-name { flex: 1; min-width: 0; }
 .cat-li .cat-name-input { flex: 1; min-width: 0; width: auto; }
+
+/* Тёплый семейный экран */
+.eyebrow { color: var(--green-2); font-size: 10px; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
+.today-menu { overflow: hidden; padding: 0; border: 1px solid #ede6dc; background: linear-gradient(145deg,#fffdf9,#fff); }
+.today-menu-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 18px 12px; }
+.today-menu-head .setting-title { font-size:21px; margin:3px 0 2px; letter-spacing:-.04em; }
+.today-menu-head .btn { white-space:nowrap; background:var(--green); }
+.today-meals { padding:0 18px 12px; }
+.today-meals .li { border-top:1px solid #f0ebe4; padding:10px 0; }
+.today-meals .li:first-child { border-top:0; }
+.today-meals .li:last-child { padding-bottom:5px; }
+.home-finance { background:linear-gradient(135deg,#f5f0e8,#fffdfa 72%); border:1px solid #ede4d8; }
+.home-finance-head,.home-goals-head,.tomorrow-head { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.home-finance-head .btn,.home-goals-head .btn,.tomorrow-head .btn { white-space:nowrap; }
+.home-balance { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-top:14px; }
+.home-balance span,.home-flow span,.home-flow small { color:var(--muted); font-size:12px; }
+.home-balance strong { font-size:23px; letter-spacing:-.04em; white-space:nowrap; }
+.home-balance strong.neg,.fin-net.neg { color:#a34f3d; }
+.home-flow { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
+.home-flow>div { background:rgba(255,255,255,.75); border:1px solid #eee8de; border-radius:14px; padding:10px 12px; }
+.home-flow span,.home-flow b,.home-flow small { display:block; }
+.home-flow b { font-size:16px; margin:2px 0; }
+.home-flow small { font-size:10px; }
+.home-spend-track { height:6px; overflow:hidden; border-radius:10px; background:#e8e6df; margin:12px 0 5px; }
+.home-spend-track i { display:block; height:100%; border-radius:10px; background:linear-gradient(90deg,#789a70,#cf9a62); }
+.tomorrow-card { border:1px solid #eee8de; }
+.tomorrow-head { margin-bottom:8px; }
+.tomorrow-empty { background:#f7f5f0; color:var(--muted); border-radius:13px; padding:13px; font-size:13px; }
+.home-goals { background:#f4f6f0; border:1px solid #e6ebdf; }
+.home-goals>.li { border-color:#e5e9de; }
+.fin-monthbar { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; }
+.fin-monthbar>div { text-align:center; }
+.fin-monthbar strong { text-transform:capitalize; font-size:17px; }
+.fin-overview { background:linear-gradient(145deg,#2f5d50,#4c8474); color:white; padding:18px; }
+.fin-net-label { color:#e1eee7; font-size:12px; }
+.fin-net { color:#fff; font-size:28px; font-weight:850; letter-spacing:-.045em; margin-top:2px; }
+.fin-net.pos { color:#fff; }
+.fin-stats { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; }
+.fin-stats>div { background:#ffffff1c; border:1px solid #ffffff1f; border-radius:13px; padding:10px 12px; }
+.fin-stats span,.fin-stats b { display:block; }
+.fin-stats span { font-size:11px; color:#e1eee7; }
+.fin-stats b { color:#fff; margin-top:2px; font-size:15px; }
+.fin-stats b.pos,.fin-stats b.neg { color:#fff; }
+.fin-share { display:flex; align-items:center; gap:10px; margin-top:9px; color:#e1eee7; font-size:10px; }
+.fin-share .home-spend-track { flex:1; margin:0; background:#ffffff38; }
+.fin-share .home-spend-track i { background:#f0c18d; }
+.goal-card { border:1px solid #ece8de; background:linear-gradient(145deg,#fffdf8,#fff); }
+.goal-card-head,.cushion-head { display:flex; align-items:center; gap:11px; }
+.goal-mark { width:42px; height:42px; display:grid; place-items:center; border-radius:15px; background:#f4e9d9; color:#ad7445; font-size:20px; }
+.goal-title { flex:1; min-width:0; }
+.goal-title .setting-title { margin:0; }
+.goal-amounts { display:flex; align-items:baseline; justify-content:space-between; margin-top:17px; }
+.goal-amounts strong { font-size:23px; letter-spacing:-.04em; }
+.goal-amounts span { color:var(--green); font-weight:800; font-size:13px; }
+.goal-track { height:9px; background:#eeeae1; border-radius:20px; overflow:hidden; margin-top:7px; }
+.goal-track i { height:100%; display:block; border-radius:20px; background:linear-gradient(90deg,#a8bd91,#58836c); }
+.goal-footer { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:13px; }
+.goal-footer>span,.cushion-caption { color:var(--muted); font-size:11px; }
+.goal-footer .btn { white-space:nowrap; }
+.cushion-card { background:linear-gradient(145deg,#284b3a,#4c7859); color:white; }
+.cushion-card .eyebrow,.cushion-card .cushion-caption { color:#e0eee1; }
+.cushion-card .setting-title { color:white; margin:2px 0 0; }
+.cushion-card .icon-btn { background:#ffffff20; color:white; }
+.cushion-total { font-size:25px; font-weight:850; letter-spacing:-.04em; margin-top:18px; }
+.cushion-total span { color:#d8e8da; font-size:13px; font-weight:500; letter-spacing:0; }
+.cushion-card .goal-track { background:#ffffff32; }
+.cushion-card .goal-track i { background:#d6bd89; }
+.cushion-card .btn { background:#f5ead8; color:#3e5e45; margin-top:14px; }
+@media(max-width:420px) { .today-menu-head { align-items:flex-start; flex-direction:column; } .home-balance strong { font-size:20px; } .fin-net { font-size:25px; } }
+
+/* Токены и шапка совпадают с концептом «Тёплый помощник» */
+:root {
+  --bg:#f5f7f4; --card:#fff; --ink:#1d2d27; --muted:#73817a; --line:#e7ece8;
+  --green:#287456; --green-2:#47866a; --radius:17px; --shadow:0 8px 24px rgba(32,53,42,.055);
+  --surface:#fff; --soft:#edf2ed; --chip:#e7f1e9; --row-line:#e9eee9; --sub:#66736b;
+  --glass:rgba(255,255,255,.94); --nav-line:#e7ece8;
+}
+[data-theme="dark"] { --bg:#151a17; --card:#202722; --ink:#eaf0eb; --muted:#a2aea5; --line:#354039;
+  --green:#74b28a; --green-2:#91c3a1; --surface:#202722; --soft:#2a332d; --chip:#29372e;
+  --row-line:#354039; --sub:#bdc8bf; --nav-line:#354039; --glass:rgba(32,39,34,.95); }
+.hero { margin:18px 0 12px; padding:5px 4px 7px; border-radius:0; color:var(--ink); background:transparent; box-shadow:none; }
+.hero-kicker { color:var(--green); opacity:1; font-size:10px; font-weight:800; letter-spacing:.13em; }
+.hero h1 { font-size:21px; letter-spacing:-.035em; font-weight:780; margin-top:3px; }
+.hero-sub { margin-top:5px; color:var(--muted); opacity:1; font-size:12px; }
+.hero-badge { width:40px; height:40px; border-radius:50%; color:var(--green); background:#e6efe7; font-size:20px; }
+.hero-badge:hover { background:#dceadd; }
+.hero-actions { gap:7px; }
+.card { border:1px solid #e7ece8; box-shadow:0 8px 24px rgba(32,53,42,.055); }
+.home-finance { color:#fff; background:linear-gradient(145deg,#315d49,#477c5c); border:0; box-shadow:0 12px 28px rgba(41,85,57,.18); }
+.home-finance .eyebrow,.home-finance .setting-title,.home-finance .home-balance span,.home-finance .note { color:#e3eee4; }
+.home-finance-head .btn { background:#ffffffeb; color:#315d49; }
+.home-flow>div { background:#ffffff1d; border-color:#ffffff26; }
+.home-flow span,.home-flow small { color:#e1ece3; }
+.home-flow b { color:#fff; }
+.home-spend-track { background:#ffffff38; }
+.home-finance .home-spend-track i { background:#e0bf8e; }
+.today-menu { border-color:#e7ece8; background:#fff; }
+.today-menu-head .setting-title { color:var(--ink); }
+.today-meals .li { border-color:#e9eee9; }
+.home-goals,.tomorrow-card { background:var(--card); border-color:#e7ece8; }
+.sections { box-shadow:0 -4px 18px rgba(32,53,42,.045); }
+.sections button.active { color:var(--green); }
+.btn.soft { background:#e7f0e8; color:#287456; }
+.goal-card { background:#fffdf9; border-color:#eee8dd; }
+.goal-mark { background:#f5eadc; color:#a96c3b; }
+.fin-overview { background:linear-gradient(145deg,#315d49,#477c5c); border:0; box-shadow:0 12px 28px rgba(41,85,57,.18); }
+.fin-monthbar { border-color:#e7ece8; }
+.cushion-card { background:linear-gradient(145deg,#315d49,#477c5c); }
+@media (min-width:760px) { .hero { padding-left:2px; padding-right:2px; } }

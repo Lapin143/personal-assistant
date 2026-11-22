@@ -568,12 +568,11 @@ export function plannerSummaryHtml() {
     return `<div class="li"><div class="main"><div class="t">${esc(d ? (d.emoji || '') + ' ' : '')}${esc(day[slot] || 'Не выбрано')}</div>
       <div class="s">${esc(title)}</div></div></div>`;
   }).join('');
-  return `<div class="card">
-    <div class="row" style="justify-content:space-between">
-      <div><div class="setting-title" style="margin:0">Меню на сегодня</div>
-      <div class="note">${esc(w ? (w.status === 'confirmed' ? 'Подтверждено' : w.status === 'bought' ? 'Куплено' : 'Черновик') : 'Не запланировано')}</div></div>
-      <button class="btn soft" data-act="sec" data-v="menu">Открыть меню</button></div>
-    ${rows}</div>`;
+  return `<section class="today-menu card">
+    <div class="today-menu-head"><div><div class="eyebrow">Сегодня · семейный план</div><div class="setting-title">Что готовим?</div>
+      <div class="note">${esc(w ? (w.status === 'confirmed' ? 'Меню подтверждено' : w.status === 'bought' ? 'Покупки готовы' : 'План пока черновик') : 'Меню ещё не запланировано')}</div></div>
+      <button class="btn" data-act="sec" data-v="menu">Открыть меню <span aria-hidden="true">↗</span></button></div>
+    <div class="today-meals">${rows}</div></section>`;
 }
 
 // ---------- закупки ----------
