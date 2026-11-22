@@ -120,31 +120,25 @@ function budgetHtml(month) {
   const byCat = {};
   for (const o of ops) if (o.type !== 'income') byCat[o.category] = (byCat[o.category] || 0) + (Number(o.amount) || 0);
   const unpaid = s.recurring.filter((r) => r.active && !s.confirmed[`${r.id}|${month}`]).reduce((a, r) => a + (Number(r.amount) || 0), 0);
-  const planned = spent + unpaid;
   const limitTotal = Object.values(L.budgets).reduce((a, v) => a + (Number(v) || 0), 0);
-  const left = limitTotal - planned;
-  const incomePlan = s.incomes.filter((i) => i.active).reduce((a, i) => a + (Number(i.amount) || 0), 0);
-  const undistributed = incomePlan - limitTotal;
-  const base = Math.max(limitTotal, planned, 1);
-  const w = (v) => Math.max(0, Math.min(100, Math.round((v / base) * 100)));
-  const tiles = `<div class="grid-2 bud-tiles">
-      <div class="stat"><div class="lbl">Лимит на месяц</div><div class="val">${money(limitTotal)}</div></div>
-      <div class="stat"><div class="lbl">Запланировано трат</div><div class="val">${money(planned)}</div></div>
-      <div class="stat"><div class="lbl">Осталось лимита</div><div class="val ${left < 0 ? 'neg' : 'pos'}">${money(left)}</div></div>
-      <div class="stat"><div class="lbl">Не распределено</div><div class="val">${incomePlan ? money(undistributed) : '—'}</div></div></div>`;
-  const meter = `<div class="bm-track" role="img" aria-label="Потрачено ${money(spent)}, запланировано ещё ${money(unpaid)}">
-      <div class="bm-spent" style="width:${w(spent)}%"></div><div class="bm-plan" style="width:${w(unpaid)}%"></div></div>
-    <div class="bm-legend"><span><i class="lg bm-spent-c"></i>Потрачено ${money(spent)}</span><span><i class="lg bm-plan-c"></i>Ещё запланировано ${money(unpaid)}</span></div>
-    <p class="note" style="margin:6px 0 0">${!incomePlan ? 'Добавьте регулярные поступления, чтобы видеть нераспределённую сумму.' : undistributed < 0 ? 'Лимиты больше плана доходов на ' + money(-undistributed) + '.' : 'Доход по плану больше лимитов: это нераспределённая сумма.'}</p>`;
-  const cats = s.categories.expense.filter((c) => (Number(L.budgets[c]) || 0) > 0 || byCat[c]).map((c) => {
-    const lim = Number(L.budgets[c]) || 0;
-    const sp = byCat[c] || 0;
-    const pct = lim ? Math.round((sp / lim) * 100) : 0;
+  const left = limitTotal - spent;
+  const forecastLeft = left - unpaid;
+  const percent = limitTotal ? Math.round((spent / limitTotal) * 100) : 0;
+  const status = percent >= 100 ? 'over' : percent >= 80 || forecastLeft < 0 ? 'warn' : '';
+  const categories = [...new Set([...s.categories.expense, ...Object.keys(byCat)])]
+    .filter((c) => (Number(L.budgets[c]) || 0) > 0 || byCat[c]);
+  const sortedCats = categories.sort((a, b) => {
+    const la = Number(L.budgets[a]) || 0; const lb = Number(L.budgets[b]) || 0;
+    const pa = la ? (byCat[a] || 0) / la : -1; const pb = lb ? (byCat[b] || 0) / lb : -1;
+    return pb - pa || (byCat[b] || 0) - (byCat[a] || 0);
+  });
+  const categoryRows = sortedCats.map((c) => {
+    const lim = Number(L.budgets[c]) || 0; const sp = byCat[c] || 0; const pct = lim ? Math.round((sp / lim) * 100) : 0;
     const cls = pct >= 100 ? 'over' : pct >= 80 ? 'warn' : '';
-    return `<div class="bud-row">
-      <div class="row" style="justify-content:space-between"><span class="t">${esc(c)}</span>
-        <span class="note">${money(sp)}${lim ? ' из ' + money(lim) : ' · без лимита'}</span></div>
-      ${lim ? `<div class="bar ${cls}"><div style="width:${Math.min(100, pct)}%"></div></div>` : ''}</div>`;
+    return `<div class="bud-row"><div class="budget-category-top"><span class="t">${esc(c)}</span>
+      <span class="budget-category-value">${money(sp)}${lim ? ` <span>из ${money(lim)}</span>` : ' <span>без лимита</span>'}</span></div>
+      ${lim ? `<div class="bar ${cls}" role="progressbar" aria-label="${esc(c)}: потрачено ${money(sp)} из ${money(lim)}" aria-valuemin="0" aria-valuemax="${lim}" aria-valuenow="${Math.min(sp, lim)}"><div style="width:${Math.min(100, pct)}%"></div></div>
+      <div class="budget-category-note">${pct >= 100 ? `Превышение ${money(sp - lim)}` : `Осталось ${money(lim - sp)}`}</div>` : ''}</div>`;
   }).join('');
   const people = s.people.map((p) => {
     const sp = visible().filter((o) => o.type !== 'income' && o.personId === p.id && o.date.startsWith(month))
@@ -154,20 +148,30 @@ function budgetHtml(month) {
     const pct = Math.round((sp / lim) * 100);
     const cls = pct >= 100 ? 'over' : pct >= 80 ? 'warn' : '';
     return `<div class="bud-row">
-      <div class="row" style="justify-content:space-between"><span class="t">${esc(p.name)}</span>
-        <span class="note">${money(sp)} из ${money(lim)}</span></div>
-      <div class="bar ${cls}"><div style="width:${Math.min(100, pct)}%"></div></div></div>`;
+      <div class="budget-category-top"><span class="t">${esc(p.name)}</span>
+        <span class="budget-category-value">${money(sp)} <span>из ${money(lim)}</span></span></div>
+      <div class="bar ${cls}" role="progressbar" aria-label="${esc(p.name)}: потрачено ${money(sp)} из ${money(lim)}" aria-valuemin="0" aria-valuemax="${lim}" aria-valuenow="${Math.min(sp, lim)}"><div style="width:${Math.min(100, pct)}%"></div></div>
+      <div class="budget-category-note">${pct >= 100 ? `Превышение ${money(sp - lim)}` : `Осталось ${money(lim - sp)}`}</div></div>`;
   }).join('');
-  return `<div class="card"><div class="setting-title">Бюджет на ${monthTitle(month)}</div>
-      <p class="setting-desc">Сравнение плана и фактических расходов. Запланированные регулярные платежи показаны отдельно от уже проведённых операций.</p>
-      ${tiles}
-      <div class="sub-title">Расходы месяца</div>${meter}</div>
-    <div class="card"><div class="setting-title">Категории</div>
-      <p class="setting-desc">Предупреждение появляется при расходе 80% лимита; превышение отмечено красным.</p>
-      ${cats || '<div class="empty">За этот месяц трат нет. Здесь появится расход по категориям.</div>'}</div>
-    ${budgetSettingsHtml()}
+  const main = limitTotal ? `<div class="budget-main-numbers"><div><span>Потрачено</span><strong>${money(spent)}</strong></div>
+      <div class="budget-main-limit"><span>из лимита</span><strong>${money(limitTotal)}</strong></div></div>
+    <div class="budget-main-track ${status}" role="progressbar" aria-label="Потрачено ${money(spent)} из лимита ${money(limitTotal)}" aria-valuemin="0" aria-valuemax="${limitTotal}" aria-valuenow="${Math.min(spent, limitTotal)}"><i style="width:${Math.min(100, percent)}%"></i></div>
+    <div class="budget-main-caption">${percent >= 100 ? `Лимит превышен на ${money(spent - limitTotal)}` : `${percent}% лимита · осталось ${money(left)}`}</div>`
+    : `<div class="budget-no-limit"><strong>Лимит расходов не задан</strong><span>Фактически потрачено ${money(spent)}. Задайте лимиты, чтобы видеть остаток бюджета.</span>
+      <button class="btn soft" data-act="limEdit">Задать лимиты</button></div>`;
+  const stats = limitTotal ? `<div class="budget-facts"><div><span>Остаток лимита</span><b class="${left < 0 ? 'neg' : 'pos'}">${money(left)}</b></div>
+      <div><span>Предстоит платежей</span><b>${money(unpaid)}</b></div>
+      <div><span>Останется после платежей</span><b class="${forecastLeft < 0 ? 'neg' : ''}">${money(forecastLeft)}</b></div></div>`
+    : `<div class="budget-facts budget-facts-unlimited"><div><span>Предстоит платежей</span><b>${money(unpaid)}</b></div></div>`;
+  return `<div class="card budget-overview"><div class="budget-overview-head"><div><div class="eyebrow">${esc(monthTitle(month))}</div><div class="setting-title">Расходы месяца</div></div>
+      ${limitTotal ? `<span class="budget-status ${status}">${percent >= 100 ? 'Лимит превышен' : forecastLeft < 0 ? 'Риск превышения' : percent >= 80 ? 'Лимит почти исчерпан' : 'В пределах лимита'}</span>` : ''}</div>
+      ${main}${stats}<p class="budget-footnote">Предстоящие платежи не включены в уже потраченные суммы.</p></div>
+    <div class="card"><div class="setting-title">Расходы по категориям</div>
+      <p class="setting-desc">Категории с наибольшей долей лимита показаны первыми. Жёлтый индикатор — от 80%, красный — лимит исчерпан.</p>
+      ${categoryRows || '<div class="empty">Операций за этот месяц пока нет.</div>'}</div>
     ${people ? `<div class="card"><div class="setting-title">Личные лимиты</div>
-      <p class="setting-desc">Считаются только ваши и общие траты. Личные операции партнёра в расчёт не входят.</p>${people}</div>` : ''}`;
+      <p class="setting-desc">Учитываются траты участника семьи; личные операции другого участника не входят в расчёт.</p>${people}</div>` : ''}
+    ${budgetSettingsHtml()}`;
 }
 
 // Настройки → Финансы: лимиты по тратам. Инфографика по категориям; шестерёнка открывает все категории.
@@ -185,8 +189,7 @@ export function budgetSettingsHtml() {
   return `<div class="card budget-settings">
       <div class="budget-config-head"><div><div class="eyebrow">Планирование</div><div class="setting-title">Лимиты бюджета</div></div>
         <button class="btn soft" data-act="limEdit">Настроить</button></div>
-      <p class="setting-desc">${pend ? `Подготовлен план на ${esc(monthTitle(nxt))}.` : `Текущие лимиты продолжат действовать в ${esc(monthTitle(nxt))}.`}
-        Изменения применяются со следующего месяца и не меняют прошлые расходы.</p>
+      <p class="setting-desc">${pend ? 'План лимитов на следующий месяц уже подготовлен.' : 'Новые значения начнут действовать со следующего месяца и не изменят прошлые расходы.'}</p>
       <div class="budget-config-grid"><div><b>${money(total)}</b><span>лимиты по категориям в месяц</span></div>
         <div><b>${cats}</b><span>${cats === 1 ? 'категория с лимитом' : 'категорий с лимитами'}</span></div>
         <div><b>${people}</b><span>${people === 1 ? 'личный лимит' : 'личных лимитов'}</span></div></div>

@@ -1,7 +1,7 @@
 import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b11';
 import { featuresInit, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, extraReminders,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
-  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=c7';
+  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=c8';
 import { api, authEnabled, signIn, signOutLocal, validToken, getSession, setAuthLostHandler, requestCount, economyMode, MONTH_LIMIT } from './api.js?v=c2';
 import { createSync, allOps, isClosed } from './store.js?v=c6';
 import { iso, todayIso, daysBetween, upcoming, monthSummary, fuelStats, goalPct } from './core.js?v=c3';
