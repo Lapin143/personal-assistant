@@ -28,6 +28,17 @@ test('YDB SDK result rows can be read from resultSets and direct arrays', () => 
   assert.deepEqual(_test.resultRows([[{ id: 2 }]]), [{ id: 2 }]);
 });
 
+test('YDB protobuf result rows use column order and decode typed cell values', () => {
+  const result = { resultSets: [{
+    columns: [{ name: 'record_id' }, { name: 'kind' }, { name: 'amount' }, { name: 'data' }, { name: 'deleted' }],
+    rows: [{ items: [
+      { uint64Value: '7' }, { textValue: 'tx' }, { doubleValue: 12.5 },
+      { textValue: '{"ok":true}' }, { uint64Value: '0' }
+    ] }]
+  }] };
+  assert.deepEqual(_test.resultRows(result), [{ record_id: '7', kind: 'tx', amount: 12.5, data: '{"ok":true}', deleted: '0' }]);
+});
+
 test('login issues a token for the configured test user', async () => {
   const env = { YDB_ENDPOINT: 'grpcs://example:2135', YDB_DATABASE: '/test', AUTH_SECRET: 'a'.repeat(40), AUTH_USER_1: 'lapin:example-test-password' };
   const res = await handle({ httpMethod: 'POST', headers: { origin: 'https://lapin143.github.io' }, queryStringParameters: { action: 'login' }, body: JSON.stringify({ login: 'lapin', password: 'example-test-password' }) }, env, 1000);

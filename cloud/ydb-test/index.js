@@ -98,7 +98,29 @@ function toRow(row) {
 function resultRows(result) {
   const first = result && (result.resultSets?.[0] ?? result[0] ?? result);
   const rows = Array.isArray(first) ? first : first && Array.isArray(first.rows) ? first.rows : [];
-  return rows.map((r) => r && r.items ? Object.fromEntries(r.items.map((x) => [x.name, x.value])) : r);
+  const columns = Array.isArray(first?.columns) ? first.columns.map((c) => c && (c.name || c.columnName)) : [];
+  const cellValue = (cell) => {
+    if (cell == null || typeof cell !== 'object' || Buffer.isBuffer(cell)) return cell;
+    for (const key of ['textValue', 'bytesValue', 'uint64Value', 'int64Value', 'doubleValue', 'boolValue', 'floatValue', 'int32Value', 'uint32Value']) {
+      if (Object.prototype.hasOwnProperty.call(cell, key)) {
+        const value = cell[key];
+        if (value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, 'value')) return value.value;
+        if (Buffer.isBuffer(value) || value instanceof Uint8Array) return Buffer.from(value).toString('utf8');
+        return value;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(cell, 'nullFlagValue')) return null;
+    if (Object.prototype.hasOwnProperty.call(cell, 'value')) return cell.value;
+    return cell;
+  };
+  return rows.map((r) => {
+    if (Array.isArray(r)) return Object.fromEntries(r.map((v, i) => [columns[i] || String(i), cellValue(v)]));
+    if (!r || !Array.isArray(r.items)) return r;
+    if (r.items.every((x) => x && typeof x === 'object' && (x.name || x.columnName))) {
+      return Object.fromEntries(r.items.map((x) => [x.name || x.columnName, cellValue(x.value ?? x)]));
+    }
+    return Object.fromEntries(r.items.map((x, i) => [columns[i] || String(i), cellValue(x)]));
+  });
 }
 
 async function withSession(fn) {
