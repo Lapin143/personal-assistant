@@ -419,13 +419,18 @@ function viewPeople() {
     ${remCatsSettingsHtml()}
 
     <div class="sub-title">Хранилище</div>
-    <div class="card"><div class="setting-title">Базы Табрики</div>
-      <p class="setting-desc">Сейчас подключено: <b>${storageTarget() === 'primary' ? 'Т1' : 'Т2'}</b>. Здесь выбирается только другая база. Переключение не запрашивает данные у исчерпавшей лимит базы.</p>
-      <label class="field" for="storage-choice">Перейти на</label>
-      <select id="storage-choice"><option value="${storageTarget() === 'primary' ? 'backup' : 'primary'}">${storageTarget() === 'primary' ? 'Т2 · резервная' : 'Т1 · основная'}</option></select>
-      <p class="setting-desc">Остаток по счётчику устройства: Т1 — ${requestCount('primary')}, Т2 — ${requestCount('backup')}. Точный лимит проверьте в кабинете Табрики.</p>
-      <div class="pill-row"><button class="btn" data-act="switchStorage">Инструкция и переключение</button>
-        ${validToken('backup') ? '<button class="btn soft" data-act="probeBackup">Проверить Т2</button>' : '<button class="btn soft" data-act="connectBackup">Подключить Т2</button>'}</div>
+    <div class="card"><div class="setting-title">Основная и резервная базы</div>
+      <p class="setting-desc">На этом устройстве сейчас используется <b>${storageLabel()}</b>. Пока активна основная база, успешные синхронизации обновляют копию. Подключите резервный аккаунт на каждом устройстве семьи.</p>
+      ${backupEnabled() ? `<p class="setting-desc">Резерв: ${validToken('backup') ? `подключена${BACKUP_SYNC?.info().last ? ` · последняя сверка ${hhmm(BACKUP_SYNC.info().last)}` : ''}${BACKUP_SYNC?.pendingCount() ? ` · ждут копирования: ${BACKUP_SYNC.pendingCount()}` : ''}` : 'не подключена'}.
+        Запросов в этом месяце: основная — ${requestCount('primary')}, резервная — ${requestCount('backup')}.</p>
+        <label class="field" for="backup-login">Логин для резервного прокси</label><input id="backup-login" type="text" value="${esc(getSession()?.login || '')}" autocomplete="username">
+        <label class="field" for="backup-password">Пароль для резервного прокси</label><input id="backup-password" type="password" autocomplete="current-password" placeholder="Введите пароль для подключения">
+        <div class="pill-row"><button class="btn soft" data-act="connectBackup">Подключить резерв</button>
+          <button class="btn soft" data-act="probeBackup" ${!validToken('backup') ? 'disabled' : ''}>Проверить новую базу</button></div>
+        <div class="pill-row"><button class="btn" data-act="backupNow" ${!validToken('backup') ? 'disabled' : ''}>Сверить и обновить копию</button>
+          <button class="btn soft" data-act="switchStorage" data-target="${storageTarget() === 'primary' ? 'backup' : 'primary'}" ${!validToken(storageTarget() === 'primary' ? 'backup' : 'primary') ? 'disabled' : ''}>${storageTarget() === 'primary' ? 'Перейти на резервную' : 'Вернуться на основную'}</button></div>
+        ${read('as.backupProbe', null) ? `<p class="note">Последняя проверка: ${esc(read('as.backupProbe').count)} записей прочитано · ${esc(read('as.backupProbe').at)}.</p>` : ''}`
+        : '<p class="setting-desc">Резервный прокси не настроен в приложении.</p>'}
     </div>
 
     <div class="sub-title">Оформление</div>
@@ -613,7 +618,7 @@ const ACTIONS = {
   connectBackup: () => { connectBackup(); return false; },
   probeBackup: () => { probeBackup(); return false; },
   backupNow: () => { refreshBackupCopy(); return false; },
-  switchStorage: () => { showSwitchInstructions($('#storage-choice')?.value); return false; },
+  switchStorage: (d) => { switchStorage(d.target); return false; },
   closeMonth: (d) => { openCloseMonth(d.ym); return false; },
   sec: (d) => { SEC = d.v; },
   finMonth: (d) => { FIN_MONTH = shiftMonth(FIN_MONTH, Number(d.d)); OPS_EXPANDED = false; },
@@ -826,13 +831,13 @@ function backupMirrorFresh() {
 }
 
 async function connectBackup() {
-  const session = getSession();
-  const login = session?.login;
-  const password = prompt('Введите пароль вашего аккаунта. Он будет использован для входа в резервную базу и не сохранится.');
-  if (!login || !password) { toast('Подключение резервной базы отменено'); return; }
+  const login = ($('#backup-login')?.value || '').trim();
+  const password = $('#backup-password')?.value || '';
+  if (!login || !password) { toast('Введите логин и пароль резервного аккаунта'); return; }
   try {
     await signInTarget('backup', login, password);
-    toast('Резервная база подключена');
+    $('#backup-password').value = '';
+    toast('Резервный аккаунт подключён');
     render();
   } catch (e) { toast(`Не удалось подключить резерв: ${e.message}`, 4500); }
 }
@@ -853,15 +858,25 @@ async function refreshBackupCopy() {
   syncBusy = true; paintSync();
   const sourceTarget = storageTarget();
   const destinationTarget = sourceTarget === 'primary' ? 'backup' : 'primary';
-  const source = engine(sourceTarget);
-  const destination = engine(destinationTarget);
-  // Сначала читаем авторитетную Табрику в состояние приложения, затем зеркалим именно его.
-  const latest = await source.sync({ full: true });
-  if (!latest.ok) { syncBusy = false; paintSync(); toast(`Не удалось прочитать ${storageLabel(sourceTarget)}: ${latest.error}`, 5500); return; }
-  const copied = await destination.sync({ full: true, ignoreRemoteOnly: true });
+  const source = await engine(sourceTarget).sync({ full: true });
+  if (!source.ok) {
+    if (sourceTarget === 'primary' && source.status === 429 && source.sourceRead) {
+      const mirror = await BACKUP_SYNC.sync({ full: true, ignoreRemoteOnly: true });
+      if (mirror.ok && BACKUP_SYNC.pendingCount() === 0) {
+        write('as.backupMirror', { at: Date.now(), updatedAt: Number(S?.updatedAt) || 0 });
+        syncBusy = false; paintSync(); toast('Лимит основной базы исчерпан; копия обновлена из последней полной сверки.', 6000); return;
+      }
+    }
+    syncBusy = false; paintSync();
+    if (source.status === 429 && sourceTarget === 'primary' && backupMirrorFresh()) toast('Лимит основной базы исчерпан, но резервная копия уже актуальна.', 5000);
+    else toast(`Не удалось проверить ${storageLabel(sourceTarget)}: ${source.error}`, 5000);
+    return;
+  }
+  const copy = await engine(destinationTarget).sync({ full: true, ignoreRemoteOnly: true });
   syncBusy = false; paintSync();
-  if (!copied.ok || destination.pendingCount() !== 0) {
-    toast(`Копия не подтверждена: ${copied.error || `осталось записей: ${destination.pendingCount()}`}`, 6000);
+  const copyEngine = engine(destinationTarget);
+  if (!copy.ok || copyEngine.pendingCount() !== 0) {
+    toast(`Копия не подтверждена: ${copy.error || `осталось записей: ${copyEngine.pendingCount()}`}`, 6000);
     return;
   }
   write('as.backupMirror', { at: Date.now(), updatedAt: Number(S?.updatedAt) || 0 });
@@ -869,52 +884,46 @@ async function refreshBackupCopy() {
   render();
 }
 
-function showSwitchInstructions(target) {
-  if (target !== 'primary' && target !== 'backup') { toast('Выберите Т1 или Т2'); return; }
-  if (target === storageTarget()) { toast('Можно выбрать только базу, которая сейчас не активна'); return; }
-  const from = storageTarget() === 'primary' ? 'Т1' : 'Т2';
-  const to = target === 'primary' ? 'Т1' : 'Т2';
-  plannerCtx.openModal(`Перейти на ${to}`, `
-    <p class="setting-desc"><b>Перед переключением перенесите актуальную таблицу вручную.</b> Если лимит ${from} исчерпан, приложение не может прочитать оттуда свежие данные и само выполнить перенос.</p>
-    <ol class="setting-desc" style="padding-left:22px;line-height:1.7">
-      <li>Откройте аккаунт Табрики ${from} и таблицу <b>records</b>.</li>
-      <li>Экспортируйте таблицу в JSON. Для текущей копии Т1 ожидается 93 записи.</li>
-      <li>Откройте аккаунт Табрики ${to} и импортируйте JSON в таблицу <b>records</b>. Выберите замену содержимого таблицы, если Табрика предлагает такой вариант, чтобы не осталось старых или дублирующих строк.</li>
-      <li>Убедитесь в Табрике ${to}, что импорт завершён и число записей совпадает с экспортом.</li>
-    </ol>
-    <p class="note">Приложение не может проверить импорт между аккаунтами. Подтверждение ниже переключит это устройство на ${to}; другие устройства семьи нужно переключить отдельно. Не нажимайте, пока импорт не проверен.</p>
-    <div class="warn-box" id="storage-switch-error" hidden></div>
-    <button class="btn block" id="storage-switch-confirm">Импорт проверен · перейти на ${to}</button>`);
-  $('#storage-switch-confirm').onclick = () => confirmStorageSwitch(target);
-}
-
-async function confirmStorageSwitch(target) {
-  const error = $('#storage-switch-error');
-  const button = $('#storage-switch-confirm');
+async function switchStorage(target) {
+  if (syncBusy) { toast('Дождитесь завершения текущей синхронизации'); return; }
   if (target !== 'primary' && target !== 'backup') return;
-  if (!validToken(target)) {
-    error.textContent = `Нет действующего входа в ${target === 'primary' ? 'Т1' : 'Т2'}. Сначала войдите в приложение заново.`;
-    error.hidden = false; return;
+  if (target === storageTarget()) return;
+  if (!validToken(target)) { toast(target === 'backup' ? 'Сначала подключите резервный аккаунт' : 'Нет входа в основную базу'); return; }
+  syncBusy = true; paintSync();
+  const sourceTarget = storageTarget();
+  const source = engine(sourceTarget);
+  const destination = engine(target);
+  let sourceResult;
+  if (sourceTarget === 'primary' && target === 'backup') {
+    sourceResult = await PRIMARY_SYNC.sync({ full: true });
+    if (!sourceResult.ok && sourceResult.status === 429 && sourceResult.sourceRead) {
+      const mirror = await BACKUP_SYNC.sync({ full: true, ignoreRemoteOnly: true });
+      if (mirror.ok && BACKUP_SYNC.pendingCount() === 0) {
+        write('as.backupMirror', { at: Date.now(), updatedAt: Number(S?.updatedAt) || 0 });
+      }
+    }
+    if (!sourceResult.ok && !(sourceResult.status === 429 && backupMirrorFresh())) {
+      syncBusy = false; paintSync();
+      toast(`Сначала нужно сверить основную базу: ${sourceResult.error}`, 5500); return;
+    }
+  } else {
+    sourceResult = await source.sync({ full: true });
+    if (!sourceResult.ok) { syncBusy = false; paintSync(); toast(`Не удалось проверить текущую базу: ${sourceResult.error}`, 5500); return; }
   }
-  button.disabled = true;
-  button.textContent = 'Проверяю доступ…';
-  try {
-    // Только тест доступности целевой таблицы. Не сливаем старый локальный снимок поверх ручного импорта.
-    await api.forTarget(target).list({ limit: 1 });
-    setStorageTarget(target);
-    SYNC = engine(target);
-    write('as.lastPull', 0);
-    closeModal();
-    render();
-    toast(`Переключено на ${target === 'primary' ? 'Т1' : 'Т2'}. Выполняю чтение актуальных данных…`, 5000);
-    const result = await runSync({ full: true });
-    if (!result.ok) toast(`База переключена, но синхронизация не завершена: ${result.error}`, 6500);
-  } catch (e) {
-    error.textContent = `Не удалось подключиться к выбранной базе: ${e.message}. Переключение не выполнено.`;
-    error.hidden = false;
-    button.disabled = false;
-    button.textContent = `Импорт проверен · перейти на ${target === 'primary' ? 'Т1' : 'Т2'}`;
+  const useVerifiedBackup = sourceTarget === 'primary' && target === 'backup' && !sourceResult.ok && sourceResult.status === 429 && !sourceResult.sourceRead;
+  const copied = await destination.sync({ full: true, ignoreRemoteOnly: !useVerifiedBackup });
+  if (!copied.ok || destination.pendingCount() !== 0) {
+    syncBusy = false; paintSync();
+    toast(`Переключение отменено: резервная сверка не завершена${copied.error ? ` · ${copied.error}` : ''}`, 6000); return;
   }
+  if (target === 'backup') write('as.backupMirror', { at: Date.now(), updatedAt: Number(S?.updatedAt) || 0 });
+  setStorageTarget(target);
+  SYNC = destination;
+  syncBusy = false;
+  write('as.lastPull', Date.now());
+  paintSync();
+  toast(`Используется ${storageLabel(target)}`);
+  render();
 }
 
 let quotaRetryTimer = null;
