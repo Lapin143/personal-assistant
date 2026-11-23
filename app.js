@@ -782,16 +782,49 @@ async function runSync({ full = false } = {}) {
   clearTimeout(pushTimer);
   syncBusy = true;
   paintSync();
-  const r = await SYNC.sync({ full });
+  let r = await SYNC.sync({ full });
+  if (r.ok && target === 'primary' && BACKUP_SYNC && validToken('backup')) {
+    const mirror = await BACKUP_SYNC.sync({ full: !BACKUP_SYNC.info().last, ignoreRemoteOnly: true });
+    if (mirror.ok && BACKUP_SYNC.pendingCount() === 0) {
+      write('as.backupMirror', { at: Date.now(), updatedAt: Number(S?.updatedAt) || 0 });
+    } else if (!mirror.ok) {
+      BACKUP_SYNC.lastError = mirror.error;
+    }
+  }
+  if (!r.ok && target === 'primary' && r.status === 429 && BACKUP_SYNC && validToken('backup')) {
+    if (!backupMirrorFresh() && r.sourceRead) {
+      const mirror = await BACKUP_SYNC.sync({ full: true, ignoreRemoteOnly: true });
+      if (mirror.ok && BACKUP_SYNC.pendingCount() === 0) {
+        write('as.backupMirror', { at: Date.now(), updatedAt: Number(S?.updatedAt) || 0 });
+      }
+    }
+    if (backupMirrorFresh()) {
+      setStorageTarget('backup');
+      SYNC = BACKUP_SYNC;
+      const fallback = await BACKUP_SYNC.sync();
+      if (fallback.ok) {
+        r = fallback;
+        toast('Лимит основной базы исчерпан. Переключились на актуальную резервную копию.', 6000);
+      } else {
+        setStorageTarget('primary');
+        SYNC = PRIMARY_SYNC;
+      }
+    }
+  }
   syncBusy = false;
   if (r.ok) { write('as.lastPull', Date.now()); clearTimeout(quotaRetryTimer); quotaRetryTimer = null; }
   else if (r.status === 429 && (SYNC?.pendingCount() || (BACKUP_SYNC && BACKUP_SYNC.pendingCount()))) scheduleQuotaRetry();
-  if (r.status === 429) toast('Лимит этой базы исчерпан. Данные сохранены на устройстве. Откройте Настройки → Хранилище для ручного перехода.', 7000);
   if (r.changed) renderSafe(); else paintSync();
   return r;
 }
 
 function engine(target) { return target === 'backup' ? BACKUP_SYNC : PRIMARY_SYNC; }
+function backupMirrorFresh() {
+  if (!BACKUP_SYNC || !validToken('backup') || BACKUP_SYNC.pendingCount() !== 0) return false;
+  const mark = read('as.backupMirror', null);
+  return Boolean(mark && Number(mark.updatedAt) >= (Number(S?.updatedAt) || 0) && Date.now() - Number(mark.at) < 24 * 60 * 60 * 1000);
+}
+
 async function connectBackup() {
   const session = getSession();
   const login = session?.login;
@@ -981,17 +1014,26 @@ function openCloseMonth(ym) {
     syncBusy = true;
     paintSync();
     const r = await SYNC.closeMonth(ym, () => logEvent(`Закрыт месяц: ${monthName(ym)}`));
+    let copiedToBackup = false;
+    if ((r.ok || r.localClosed) && storageTarget() === 'primary' && BACKUP_SYNC && validToken('backup')) {
+      const mirror = await BACKUP_SYNC.sync({ full: !BACKUP_SYNC.info().last, ignoreRemoteOnly: true });
+      copiedToBackup = mirror.ok && BACKUP_SYNC.pendingCount() === 0;
+      if (copiedToBackup) write('as.backupMirror', { at: Date.now(), updatedAt: Number(S?.updatedAt) || 0 });
+      if (copiedToBackup && r.localClosed && r.status === 429) {
+        setStorageTarget('backup'); SYNC = BACKUP_SYNC; r.backupFailover = true;
+      }
+    }
     syncBusy = false;
     write('as.data', S);
-    if (r.ok) {
+    if (r.ok || r.backupFailover) {
       closeModal();
       render();
-      toast(`Месяц закрыт: ${r.count} операций заменены итогами`, 4500);
+      toast(`Месяц закрыт: ${r.count} операций заменены итогами${r.backupFailover ? ' и сохранены в резервной базе' : ''}${!copiedToBackup && validToken('backup') ? ' · резервную копию нужно сверить' : ''}`, 4500);
     } else if (r.localClosed) {
       closeModal();
       render();
       if (r.status === 429) scheduleQuotaRetry();
-      toast(`Месяц закрыт на устройстве. ${r.error} Для работы с другой базой перейдите в Настройки → Хранилище.`, 7000);
+      toast(`Месяц закрыт на устройстве. ${r.error} Изменения отправятся автоматически после сброса лимита.`, 6000);
     } else {
       err.textContent = `Не удалось закрыть месяц: ${r.error}. Данные не потеряны, попробуйте позже.`;
       err.hidden = false;
