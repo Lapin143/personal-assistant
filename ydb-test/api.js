@@ -4,8 +4,8 @@ import { API } from './config.js?v=c1';
 
 const SESSION_KEY = 'as.session';
 const COUNT_KEY = 'as.requests';
-export const MONTH_LIMIT = 1000;   // месячный лимит этой организации по настройкам пользователя
-export const DEVICE_SOFT = 400;    // бережный режим, чтобы оставить запас общему лимиту на втором устройстве
+export const MONTH_LIMIT = 0;       // лимит Табрики не применяется к тестовой версии на YDB
+export const DEVICE_SOFT = Number.MAX_SAFE_INTEGER; // лимит Табрики не ограничивает тестовую синхронизацию
 
 export const authEnabled = () => Boolean(API.url);
 

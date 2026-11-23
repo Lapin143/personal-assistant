@@ -28,15 +28,31 @@ export const API = {
 "@
 Set-Content -LiteralPath (Join-Path $target 'config.js') -Value $config -Encoding utf8
 
+# The copied application defaults to Tabrica's shared monthly quota. The isolated
+# YDB test app must not show that quota or enable its client-side throttling.
+$apiPath = Join-Path $target 'api.js'
+$api = Get-Content -LiteralPath $apiPath -Raw
+$api = $api.Replace('export const MONTH_LIMIT = 1000;   // месячный лимит этой организации по настройкам пользователя', 'export const MONTH_LIMIT = 0;       // лимит Табрики не применяется к тестовой версии на YDB')
+$api = $api.Replace('export const DEVICE_SOFT = 400;    // бережный режим, чтобы оставить запас общему лимиту на втором устройстве', 'export const DEVICE_SOFT = Number.MAX_SAFE_INTEGER; // лимит Табрики не ограничивает тестовую синхронизацию')
+Set-Content -LiteralPath $apiPath -Value $api.TrimEnd() -Encoding utf8
+
+$appPath = Join-Path $target 'app.js'
+$app = Get-Content -LiteralPath $appPath -Raw
+$app = $app.Replace('Бесплатный лимит Табрики — ${MONTH_LIMIT.toLocaleString(''ru-RU'')} в месяц на все устройства; точный счётчик смотрите в Табрике: Настройки → Статистика.', 'Тестовая версия подключена к YDB; лимит запросов Табрики здесь не применяется.')
+$app = $app.Replace('${economyMode() ? ''<br><b>Экономный режим:</b> автообновление при открытии не чаще раза в час. Кнопка работает как обычно.'' : ''''}', '')
+$app = $app.Replace('На закрытие уйдёт примерно ${txs.length + 3} запросов к базе из ${MONTH_LIMIT.toLocaleString(''ru-RU'')} в месяц.', 'Запросы тестовой версии не расходуют лимит Табрики.')
+$app = $app -replace '(?m)^[\t ]+\r?$', ''
+Set-Content -LiteralPath $appPath -Value $app.TrimEnd() -Encoding utf8
+
 $htmlPath = Join-Path $target 'index.html'
 $html = Get-Content -LiteralPath $htmlPath -Raw
 $nl = [Environment]::NewLine
 $html = $html.Replace('<link rel="manifest" href="manifest.webmanifest">', "<link rel=`"manifest`" href=`"manifest.webmanifest`">$nl  <script src=`"storage-isolation.js`"></script>")
 $html = $html.Replace('<body>', "<body>$nl  <div class=`"test-environment-banner`" role=`"status`">ТЕСТОВАЯ БАЗА · ДАННЫЕ НЕ СИНХРОНИЗИРУЮТСЯ С Т1</div>")
-$html = $html.Replace('href="style.css?v=b5"', 'href="style.css?v=ydb-test-1"')
-$html = $html.Replace('href="menu/planner.css?v=b7"', 'href="menu/planner.css?v=ydb-test-1"')
-$html = $html.Replace('href="features.css?v=c6"', 'href="features.css?v=ydb-test-1"')
-$html = $html.Replace('src="app.js?v=c8"', 'src="app.js?v=ydb-test-1"')
+$html = $html.Replace('href="style.css?v=b5"', 'href="style.css?v=ydb-test-2"')
+$html = $html.Replace('href="menu/planner.css?v=b7"', 'href="menu/planner.css?v=ydb-test-2"')
+$html = $html.Replace('href="features.css?v=c6"', 'href="features.css?v=ydb-test-2"')
+$html = $html.Replace('src="app.js?v=c8"', 'src="app.js?v=ydb-test-2"')
 Set-Content -LiteralPath $htmlPath -Value $html -Encoding utf8
 
 $manifest = @'
@@ -96,7 +112,7 @@ $style = @'
 Add-Content -LiteralPath (Join-Path $target 'style.css') -Value $style -Encoding utf8
 
 $sw = @'
-const CACHE = 'assistant-ydb-test-v1';
+const CACHE = 'assistant-ydb-test-v2';
 const SHELL = ['./','index.html','style.css','app.js','core.js','menu/planner.js','menu/planner.css','features.js','features.css','api.js','store.js','config.js','data.json','manifest.webmanifest','storage-isolation.js','icon.svg','icon-180.png','icon-192.png','icon-512.png'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('assistant-ydb-test-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
