@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2f5d50">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Ассистент">
+  <title>Ассистент</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <script src="storage-isolation.js"></script>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+  <link rel="stylesheet" href="style.css?v=ydb-test-1">
+  <link rel="stylesheet" href="menu/planner.css?v=ydb-test-1">
+  <link rel="stylesheet" href="features.css?v=ydb-test-1">
+</head>
+<body>
+  <div class="test-environment-banner" role="status">ТЕСТОВАЯ БАЗА · ДАННЫЕ НЕ СИНХРОНИЗИРУЮТСЯ С Т1</div>
+  <div class="app">
+    <header class="hero">
+      <div class="hero-top">
+        <div>
+          <div class="hero-kicker" id="hero-kicker">Семейный ассистент</div>
+          <h1 id="hero-title">Ассистент</h1>
+        </div>
+        <div class="hero-actions">
+          <button class="hero-badge sync-btn" id="sync-btn" data-act="syncNow" aria-label="Синхронизировать">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 20v-4h-4"/></svg>
+            <span class="sync-dot" id="sync-dot" hidden></span>
+          </button>
+          <button class="hero-badge bell" id="bell" data-act="bell" aria-label="Напоминания">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
+            <span class="bell-count" id="bell-count" hidden></span>
+          </button>
+        </div>
+      </div>
+      <div class="hero-sub" id="hero-sub"></div>
+    </header>
+
+    <main id="main"></main>
+  </div>
+
+  <nav class="sections" id="sections" aria-label="Разделы"></nav>
+
+  <div id="modal" class="modal hidden">
+    <div class="sheet">
+      <div class="sheet-grip"></div>
+      <div class="sheet-head">
+        <strong id="modal-title"></strong>
+        <button id="modal-close" class="icon-btn" aria-label="Закрыть">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js?v=ydb-test-1"></script>
+</body>
+</html>
+
