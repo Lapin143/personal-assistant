@@ -137,3 +137,7 @@ node cloud/dev-server.mjs  # локальный стенд на http://localhost
 ## Публикация
 
 Настройки GitHub Pages: **Settings → Pages → Source → Deploy from a branch → `main`, папка `/ (root)`**.
+
+### Изолированная тестовая версия YDB
+
+Для проверки миграции на отдельной тестовой базе опубликована версия [`/ydb-test/`](https://lapin143.github.io/personal-assistant/ydb-test/). Она подключается к тестовой функции Yandex Cloud и `assistant-test-ydb`; корневая версия приложения продолжает работать с production-конфигурацией. Данные на тестовой версии не синхронизируются с T1. Инструкция по тестовой функции и импорту находится в [`cloud/ydb-test/README.md`](cloud/ydb-test/README.md).
