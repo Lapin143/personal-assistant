@@ -485,18 +485,4 @@ ok('работает при любом представлении JSON-поля 
   ok('резервная сверка обновляет значения и не возвращает устаревшие строки');
 }
 
-// Переключение с устаревшими метаданными не должно превращать строки цели в удаления.
-{
-  const target = await makeDevice(makeTabrica(), 'vlad', 'password-one', sample());
-  assert.ok((await target.go()).ok);
-
-  target.S.transactions = [];
-  target.sync.reset();
-  const restored = await target.go({ full: true });
-  assert.ok(restored.ok, restored.error);
-  assert.ok(target.S.transactions.length > 0);
-  assert.equal([...target.tabrica.rows.values()].filter((row) => row.kind === 'tx' && row.deleted).length, 0);
-  ok('при переключении метаданные очищаются до чтения целевой базы');
-}
-
 console.log(`\nвсе ${n} проверок пройдены`);

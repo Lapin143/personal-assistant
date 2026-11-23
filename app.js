@@ -868,10 +868,6 @@ async function confirmStorageSwitch(target) {
   try {
     // Только тест доступности целевой таблицы. Не сливаем старый локальный снимок поверх ручного импорта.
     await api.forTarget(target).list({ limit: 1 });
-    // На устройстве могли остаться метаданные предыдущей синхронизации с этой базой.
-    // Если они ссылаются на строки, отсутствующие в локальном снимке, сверка может
-    // ошибочно принять их за локальные удаления и отправить tombstones поверх импорта.
-    engine(target)?.reset();
     setStorageTarget(target);
     SYNC = engine(target);
     write('as.lastPull', 0);
