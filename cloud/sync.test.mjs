@@ -30,7 +30,7 @@ async function makeDevice(tabrica, login, password, initial) {
   const storage = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) };
   const lg = await fn(tabrica, 'POST', { action: 'login' }, { login, password });
   assert.equal(lg.status, 200);
-  const dev = { S: structuredClone(initial), token: lg.json.token, requests: 0, storage, tabrica };
+  const dev = { S: structuredClone(initial), token: lg.json.token, requests: 0, storage };
   const fail = (r) => { const e = new Error(r.json.message || r.json.error || String(r.status)); e.status = r.status; e.auth = r.status === 401; return e; };
   const api = {
     async list({ where, limit, offset }) {
@@ -49,7 +49,6 @@ async function makeDevice(tabrica, login, password, initial) {
       return { results: r.json.results, now: r.json.now };
     }
   };
-  dev.api = api;
   dev.sync = createSync({ api, storage, getState: () => dev.S, setState: (s) => { dev.S = s; }, now: () => clock });
   dev.go = async (opts) => { tick(); const before = dev.requests; const r = await dev.sync.sync(opts); r.used = dev.requests - before; return r; };
   return dev;
@@ -245,7 +244,6 @@ ok('закрытие месяца: итоги в history_json, строки уд
   qr = await D.go();
   assert.equal(qr.ok, false);
   assert.equal(qr.status, 429);
-  assert.equal(qr.sourceRead, true); // можно безопасно отправить уже прочитанное состояние в резерв
   assert.ok(D.S.transactions.some((x) => x.id === 'quota-pending'));
   assert.ok(D.sync.pendingCount() > 0);
   Q.monthlyLimit = 0;
@@ -253,10 +251,6 @@ ok('закрытие месяца: итоги в history_json, строки уд
   assert.ok(qr.ok, qr.error);
   assert.equal(D.sync.pendingCount(), 0);
   assert.ok([...Q.rows.values()].some((x) => x.kind === 'tx' && x.key === 'quota-pending' && x.data && x.data.id === 'quota-pending'));
-  Q.monthlyLimit = Q.requests;
-  qr = await D.go({ full: true });
-  assert.equal(qr.status, 429);
-  assert.equal(qr.sourceRead, false); // при отказе чтения нельзя объявлять резерв актуальным
   ok('после 429 локальная операция сохраняется и уходит после восстановления квоты');
 }
 
@@ -449,40 +443,6 @@ ok('работает при любом представлении JSON-поля 
   await Q.go(); await P.go(); await Q.go();
   same(P.S, Q.S);
   ok('месяц обычного использования укладывается в лимит 1 000 запросов');
-}
-
-// Резервная копия: устаревшие строки резервной базы не должны затереть основную.
-{
-  const primaryState = sample();
-  const primary = await makeDevice(makeTabrica(), 'vlad', 'password-one', primaryState);
-  assert.ok((await primary.go()).ok);
-
-  const staleState = structuredClone(primaryState);
-  staleState.transactions.push({ id: 'stale-copy-only', type: 'expense', amount: 50, date: '2026-11-21', category: 'Продукты' });
-  staleState.goals[0].saved = 1;
-  const backup = await makeDevice(makeTabrica(), 'vlad', 'password-one', staleState);
-  assert.ok((await backup.go()).ok);
-
-  primary.S.transactions = primary.S.transactions.filter((t) => t.id !== 't1');
-  primary.S.goals[0].saved = 7777;
-  assert.ok((await primary.go()).ok);
-
-  const mirror = createSync({
-    api: backup.api, storage: backup.storage, metaKey: 'mirror.sync',
-    getState: () => primary.S, setState: (s) => { primary.S = s; }, now: () => clock
-  });
-  const mirrored = await mirror.sync({ full: true, ignoreRemoteOnly: true });
-  assert.ok(mirrored.ok, mirrored.error);
-  assert.equal(mirror.pendingCount(), 0);
-
-  const reader = await makeDevice(backup.tabrica, 'vlad', 'password-one', base);
-  // Read through the backup API using a separate device, then compare canonical application data.
-  reader.api = backup.api;
-  reader.sync = createSync({ api: backup.api, storage: reader.storage, getState: () => reader.S, setState: (s) => { reader.S = s; }, now: () => clock });
-  const checked = await reader.sync.sync({ full: true });
-  assert.ok(checked.ok, checked.error);
-  same(reader.S, primary.S, 'основная → резервная база');
-  ok('резервная сверка обновляет значения и не возвращает устаревшие строки');
 }
 
 console.log(`\nвсе ${n} проверок пройдены`);

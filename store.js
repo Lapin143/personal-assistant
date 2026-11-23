@@ -337,7 +337,7 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
     return { records, serverNow, full: !where, requests };
   }
 
-  function apply(pulled, opts = {}) {
+  function apply(pulled) {
     const S = getState();
     const rows = localRows();
     const remoteIds = new Set();
@@ -375,7 +375,7 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
         meta.tombs[r.id] = meta.tombs[r.id] || r.updated || t;
         if (m && m.id === r.id) {
           delete meta.rows[rk];
-          if (rows.delete(rk) && !opts.ignoreRemoteOnly) changed = true;
+          if (rows.delete(rk)) changed = true;
         }
         continue;
       }
@@ -390,12 +390,6 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
       }
       const content = { kind: r.kind, key: r.key, title: r.title, date: r.date, amount: r.amount, category: r.category, data: r.data };
       const rh = rowHash(content);
-      // Во время копирования основная база остаётся авторитетной: резерв не импортирует,
-      // а только запоминает серверные версии, чтобы push обновил или пометил лишнее.
-      if (opts.ignoreRemoteOnly) {
-        meta.rows[rk] = { id: r.id, h: rh };
-        continue;
-      }
       if (m && m.h === rh) continue;
       const local = rows.get(rk);
       const dirty = Boolean(m && local && rowHash(local) !== m.h) || Boolean(m && !local);
@@ -486,7 +480,7 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
     const msg = String(b.message || (typeof b.detail === 'string' ? b.detail : '') || '');
     if (/row_limit_exceeded/.test(code + msg)) return 'В Табрике закончился лимит записей. Закройте старые месяцы в Финансах.';
     if (/tabular_data_limit_exceeded/.test(code + msg)) return 'В Табрике закончился объём данных.';
-    if (res && res.status === 429) return 'Месячный лимит запросов исчерпан. Изменения сохранены на устройстве; повторная синхронизация будет выполнена позже.';
+    if (res && res.status === 429) return 'Лимит запросов исчерпан. Синхронизация возобновится в новом расчётном периоде.';
     return `Ошибка сервера ${res ? res.status : ''}${msg ? ': ' + msg : code ? ': ' + code : ''}`.trim();
   };
 
@@ -535,23 +529,22 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
   }
 
   async function run(opts = {}) {
-    const stats = { ok: false, changed: false, sourceRead: false, sent: 0, requests: 0, error: '' };
+    const stats = { ok: false, changed: false, sent: 0, requests: 0, error: '' };
     onStatus({ busy: true });
     try {
       if (!getState()) throw new Error('нет данных');
       const full = Boolean(opts.full || meta.needFull || !meta.last || now() - (meta.lastFull || 0) > FULL_EVERY_MS);
       let pulled = await pull(full);
       stats.requests += pulled.requests;
-      stats.changed = apply(pulled, opts);
+      stats.changed = apply(pulled);
       // Страница изменений показала расхождение номеров строк: сразу сверяемся целиком, до отправки своих правок.
       if (!pulled.full && meta.needFull) {
         const serverNow = pulled.serverNow;
         pulled = await pull(true);
         pulled.serverNow = Math.min(serverNow, pulled.serverNow);
         stats.requests += pulled.requests;
-        if (apply(pulled, opts)) stats.changed = true;
+        if (apply(pulled)) stats.changed = true;
       }
-      stats.sourceRead = true;
       saveMeta();
       const pushed = await push(opts);
       stats.sent = pushed.sent;

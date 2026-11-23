@@ -2,9 +2,8 @@ import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './men
 import { featuresInit, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, extraReminders,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
   remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=c8';
-import { api, authEnabled, backupEnabled, signIn, signInTarget, signOutLocal, validToken, getSession, setAuthLostHandler,
-  requestCount, economyMode, MONTH_LIMIT, storageTarget, setStorageTarget, storageLabel } from './api.js?v=c3';
-import { createSync, allOps, isClosed } from './store.js?v=c8';
+import { api, authEnabled, signIn, signOutLocal, validToken, getSession, setAuthLostHandler, requestCount, economyMode, MONTH_LIMIT } from './api.js?v=c2';
+import { createSync, allOps, isClosed } from './store.js?v=c6';
 import { iso, todayIso, daysBetween, upcoming, monthSummary, fuelStats, goalPct } from './core.js?v=c3';
 
 // ---------- помощники ----------
@@ -418,21 +417,6 @@ function viewPeople() {
       <div class="pill-row"><button class="btn soft" data-act="saveSettings">Сохранить</button></div></div>
     ${remCatsSettingsHtml()}
 
-    <div class="sub-title">Хранилище</div>
-    <div class="card"><div class="setting-title">Основная и резервная базы</div>
-      <p class="setting-desc">На этом устройстве сейчас используется <b>${storageLabel()}</b>. Пока активна основная база, успешные синхронизации обновляют копию. Подключите резервный аккаунт на каждом устройстве семьи.</p>
-      ${backupEnabled() ? `<p class="setting-desc">Резерв: ${validToken('backup') ? `подключена${BACKUP_SYNC?.info().last ? ` · последняя сверка ${hhmm(BACKUP_SYNC.info().last)}` : ''}${BACKUP_SYNC?.pendingCount() ? ` · ждут копирования: ${BACKUP_SYNC.pendingCount()}` : ''}` : 'не подключена'}.
-        Запросов в этом месяце: основная — ${requestCount('primary')}, резервная — ${requestCount('backup')}.</p>
-        <label class="field" for="backup-login">Логин для резервного прокси</label><input id="backup-login" type="text" value="${esc(getSession()?.login || '')}" autocomplete="username">
-        <label class="field" for="backup-password">Пароль для резервного прокси</label><input id="backup-password" type="password" autocomplete="current-password" placeholder="Введите пароль для подключения">
-        <div class="pill-row"><button class="btn soft" data-act="connectBackup">Подключить резерв</button>
-          <button class="btn soft" data-act="probeBackup" ${!validToken('backup') ? 'disabled' : ''}>Проверить новую базу</button></div>
-        <div class="pill-row"><button class="btn" data-act="backupNow" ${!validToken('backup') ? 'disabled' : ''}>Сверить и обновить копию</button>
-          <button class="btn soft" data-act="switchStorage" data-target="${storageTarget() === 'primary' ? 'backup' : 'primary'}" ${!validToken(storageTarget() === 'primary' ? 'backup' : 'primary') ? 'disabled' : ''}>${storageTarget() === 'primary' ? 'Перейти на резервную' : 'Вернуться на основную'}</button></div>
-        ${read('as.backupProbe', null) ? `<p class="note">Последняя проверка: ${esc(read('as.backupProbe').count)} записей прочитано · ${esc(read('as.backupProbe').at)}.</p>` : ''}`
-        : '<p class="setting-desc">Резервный прокси не настроен в приложении.</p>'}
-    </div>
-
     <div class="sub-title">Оформление</div>
     <div class="card"><div class="setting-title">Тема</div>
       <label class="chk"><input type="checkbox" id="dark-toggle" ${document.documentElement.dataset.theme === 'dark' ? 'checked' : ''}> Тёмная тема</label></div>
@@ -607,7 +591,7 @@ const ACTIONS = {
   ...FEATURE_ACTIONS,
   ...EXTRA_ACTIONS_ALL,
   logout: () => {
-    if ((SYNC?.pendingCount() || 0) + (BACKUP_SYNC?.pendingCount() || 0) && !confirm('Есть изменения, которые ещё не ушли в облако. При выходе они пропадут. Выйти?')) return false;
+    if (SYNC && SYNC.pendingCount() && !confirm('Есть изменения, которые ещё не ушли в облако. При выходе они пропадут. Выйти?')) return false;
     signOutLocal();
     for (const k of ['as.data', 'as.sync', 'as.lastPull']) localStorage.removeItem(k);
     location.reload();
@@ -615,10 +599,6 @@ const ACTIONS = {
   },
   syncNow: () => { manualSync(false); return false; },
   fullSync: () => { manualSync(true); return false; },
-  connectBackup: () => { connectBackup(); return false; },
-  probeBackup: () => { probeBackup(); return false; },
-  backupNow: () => { refreshBackupCopy(); return false; },
-  switchStorage: (d) => { switchStorage(d.target); return false; },
   closeMonth: (d) => { openCloseMonth(d.ym); return false; },
   sec: (d) => { SEC = d.v; },
   finMonth: (d) => { FIN_MONTH = shiftMonth(FIN_MONTH, Number(d.d)); OPS_EXPANDED = false; },
@@ -744,8 +724,6 @@ const plannerCtx = {
 // ---------- синхронизация ----------
 // Никаких опросов по таймеру: сервер запрашивается при открытии приложения, после изменений и по кнопке.
 let SYNC = null;
-let PRIMARY_SYNC = null;
-let BACKUP_SYNC = null;
 let pushTimer = null;
 let syncBusy = false;
 let manualAt = 0;
@@ -753,7 +731,7 @@ let renderPending = false;
 const PUSH_DELAY = 6000;          // правки подряд уходят одним пакетом
 const MANUAL_GAP = 30000;         // кнопка — не чаще раза в 30 секунд
 // Как давно должен был быть прошлый запрос, чтобы при открытии запросить сервер снова.
-const pullGap = (resume) => (economyMode(storageTarget()) ? 60 : resume ? 3 : 0.5) * 60000;
+const pullGap = (resume) => (economyMode() ? 60 : resume ? 3 : 0.5) * 60000;
 const hhmm = (ts) => new Date(ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 
 function schedulePush() {
@@ -781,161 +759,27 @@ function renderSafe() {
 }
 
 async function runSync({ full = false } = {}) {
-  const target = storageTarget();
-  SYNC = target === 'backup' ? BACKUP_SYNC : PRIMARY_SYNC;
-  if (!SYNC || !validToken(target)) return { ok: false, error: 'Нужен вход' };
+  if (!SYNC || !validToken()) return { ok: false, error: 'Нужен вход' };
   clearTimeout(pushTimer);
   syncBusy = true;
   paintSync();
-  let r = await SYNC.sync({ full });
-  if (r.ok && target === 'primary' && BACKUP_SYNC && validToken('backup')) {
-    const mirror = await BACKUP_SYNC.sync({ full: !BACKUP_SYNC.info().last, ignoreRemoteOnly: true });
-    if (mirror.ok && BACKUP_SYNC.pendingCount() === 0) {
-      write('as.backupMirror', { at: Date.now(), updatedAt: Number(S?.updatedAt) || 0 });
-    } else if (!mirror.ok) {
-      BACKUP_SYNC.lastError = mirror.error;
-    }
-  }
-  if (!r.ok && target === 'primary' && r.status === 429 && BACKUP_SYNC && validToken('backup')) {
-    if (!backupMirrorFresh() && r.sourceRead) {
-      const mirror = await BACKUP_SYNC.sync({ full: true, ignoreRemoteOnly: true });
-      if (mirror.ok && BACKUP_SYNC.pendingCount() === 0) {
-        write('as.backupMirror', { at: Date.now(), updatedAt: Number(S?.updatedAt) || 0 });
-      }
-    }
-    if (backupMirrorFresh()) {
-      setStorageTarget('backup');
-      SYNC = BACKUP_SYNC;
-      const fallback = await BACKUP_SYNC.sync();
-      if (fallback.ok) {
-        r = fallback;
-        toast('Лимит основной базы исчерпан. Переключились на актуальную резервную копию.', 6000);
-      } else {
-        setStorageTarget('primary');
-        SYNC = PRIMARY_SYNC;
-      }
-    }
-  }
+  const r = await SYNC.sync({ full });
   syncBusy = false;
   if (r.ok) { write('as.lastPull', Date.now()); clearTimeout(quotaRetryTimer); quotaRetryTimer = null; }
-  else if (r.status === 429 && (SYNC?.pendingCount() || (BACKUP_SYNC && BACKUP_SYNC.pendingCount()))) scheduleQuotaRetry();
+  else if (r.status === 429 && SYNC.pendingCount()) scheduleQuotaRetry();
   if (r.changed) renderSafe(); else paintSync();
   return r;
 }
 
-function engine(target) { return target === 'backup' ? BACKUP_SYNC : PRIMARY_SYNC; }
-function backupMirrorFresh() {
-  if (!BACKUP_SYNC || !validToken('backup') || BACKUP_SYNC.pendingCount() !== 0) return false;
-  const mark = read('as.backupMirror', null);
-  return Boolean(mark && Number(mark.updatedAt) >= (Number(S?.updatedAt) || 0) && Date.now() - Number(mark.at) < 24 * 60 * 60 * 1000);
-}
-
-async function connectBackup() {
-  const login = ($('#backup-login')?.value || '').trim();
-  const password = $('#backup-password')?.value || '';
-  if (!login || !password) { toast('Введите логин и пароль резервного аккаунта'); return; }
-  try {
-    await signInTarget('backup', login, password);
-    $('#backup-password').value = '';
-    toast('Резервный аккаунт подключён');
-    render();
-  } catch (e) { toast(`Не удалось подключить резерв: ${e.message}`, 4500); }
-}
-
-async function probeBackup() {
-  if (!validToken('backup')) { toast('Сначала подключите резервный аккаунт'); return; }
-  try {
-    const r = await api.forTarget('backup').list({ limit: 1000 });
-    write('as.backupProbe', { count: r.records.length, at: new Date().toLocaleString('ru-RU') });
-    toast(`Новая база доступна · прочитано ${r.records.length} записей`);
-    render();
-  } catch (e) { toast(`Проверка резервной базы не прошла: ${e.message}`, 5000); }
-}
-
-async function refreshBackupCopy() {
-  if (syncBusy) { toast('Дождитесь завершения текущей синхронизации'); return; }
-  if (!validToken('backup')) { toast('Сначала подключите резервный аккаунт'); return; }
-  syncBusy = true; paintSync();
-  const sourceTarget = storageTarget();
-  const destinationTarget = sourceTarget === 'primary' ? 'backup' : 'primary';
-  const source = await engine(sourceTarget).sync({ full: true });
-  if (!source.ok) {
-    if (sourceTarget === 'primary' && source.status === 429 && source.sourceRead) {
-      const mirror = await BACKUP_SYNC.sync({ full: true, ignoreRemoteOnly: true });
-      if (mirror.ok && BACKUP_SYNC.pendingCount() === 0) {
-        write('as.backupMirror', { at: Date.now(), updatedAt: Number(S?.updatedAt) || 0 });
-        syncBusy = false; paintSync(); toast('Лимит основной базы исчерпан; копия обновлена из последней полной сверки.', 6000); return;
-      }
-    }
-    syncBusy = false; paintSync();
-    if (source.status === 429 && sourceTarget === 'primary' && backupMirrorFresh()) toast('Лимит основной базы исчерпан, но резервная копия уже актуальна.', 5000);
-    else toast(`Не удалось проверить ${storageLabel(sourceTarget)}: ${source.error}`, 5000);
-    return;
-  }
-  const copy = await engine(destinationTarget).sync({ full: true, ignoreRemoteOnly: true });
-  syncBusy = false; paintSync();
-  const copyEngine = engine(destinationTarget);
-  if (!copy.ok || copyEngine.pendingCount() !== 0) {
-    toast(`Копия не подтверждена: ${copy.error || `осталось записей: ${copyEngine.pendingCount()}`}`, 6000);
-    return;
-  }
-  write('as.backupMirror', { at: Date.now(), updatedAt: Number(S?.updatedAt) || 0 });
-  toast(destinationTarget === 'backup' ? 'Резервная база полностью сверена' : 'Основная база обновлена из резерва');
-  render();
-}
-
-async function switchStorage(target) {
-  if (syncBusy) { toast('Дождитесь завершения текущей синхронизации'); return; }
-  if (target !== 'primary' && target !== 'backup') return;
-  if (target === storageTarget()) return;
-  if (!validToken(target)) { toast(target === 'backup' ? 'Сначала подключите резервный аккаунт' : 'Нет входа в основную базу'); return; }
-  syncBusy = true; paintSync();
-  const sourceTarget = storageTarget();
-  const source = engine(sourceTarget);
-  const destination = engine(target);
-  let sourceResult;
-  if (sourceTarget === 'primary' && target === 'backup') {
-    sourceResult = await PRIMARY_SYNC.sync({ full: true });
-    if (!sourceResult.ok && sourceResult.status === 429 && sourceResult.sourceRead) {
-      const mirror = await BACKUP_SYNC.sync({ full: true, ignoreRemoteOnly: true });
-      if (mirror.ok && BACKUP_SYNC.pendingCount() === 0) {
-        write('as.backupMirror', { at: Date.now(), updatedAt: Number(S?.updatedAt) || 0 });
-      }
-    }
-    if (!sourceResult.ok && !(sourceResult.status === 429 && backupMirrorFresh())) {
-      syncBusy = false; paintSync();
-      toast(`Сначала нужно сверить основную базу: ${sourceResult.error}`, 5500); return;
-    }
-  } else {
-    sourceResult = await source.sync({ full: true });
-    if (!sourceResult.ok) { syncBusy = false; paintSync(); toast(`Не удалось проверить текущую базу: ${sourceResult.error}`, 5500); return; }
-  }
-  const useVerifiedBackup = sourceTarget === 'primary' && target === 'backup' && !sourceResult.ok && sourceResult.status === 429 && !sourceResult.sourceRead;
-  const copied = await destination.sync({ full: true, ignoreRemoteOnly: !useVerifiedBackup });
-  if (!copied.ok || destination.pendingCount() !== 0) {
-    syncBusy = false; paintSync();
-    toast(`Переключение отменено: резервная сверка не завершена${copied.error ? ` · ${copied.error}` : ''}`, 6000); return;
-  }
-  if (target === 'backup') write('as.backupMirror', { at: Date.now(), updatedAt: Number(S?.updatedAt) || 0 });
-  setStorageTarget(target);
-  SYNC = destination;
-  syncBusy = false;
-  write('as.lastPull', Date.now());
-  paintSync();
-  toast(`Используется ${storageLabel(target)}`);
-  render();
-}
-
 let quotaRetryTimer = null;
-const QUOTA_RETRY_DELAY = 24 * 60 * 60 * 1000; // дата сброса зависит от расчётного цикла организации
 function scheduleQuotaRetry() {
   clearTimeout(quotaRetryTimer);
+  const now = new Date();
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 5, 0, 0);
   quotaRetryTimer = setTimeout(() => {
     quotaRetryTimer = null;
-    if (!SYNC?.pendingCount()) return;
-    if (document.visibilityState !== 'visible' || syncBusy) { scheduleQuotaRetry(); return; }
-    runSync();
-  }, QUOTA_RETRY_DELAY);
+    if (document.visibilityState === 'visible' && SYNC?.pendingCount() && !syncBusy) runSync();
+  }, Math.max(1000, nextMonth.getTime() - now.getTime()));
 }
 
 async function manualSync(full) {
@@ -956,22 +800,18 @@ function syncInfoHtml() {
   return `${i.last ? `Последняя синхронизация: ${fmtDate(iso(new Date(i.last)))} в ${hhmm(i.last)}.` : 'Синхронизации ещё не было.'}
     ${pending ? `Ждут отправки: ${pending}.` : 'Все изменения отправлены.'}
     ${i.error ? `<br><b>Последняя ошибка:</b> ${esc(i.error)}` : ''}
-    <br>Активное хранилище: <b>${storageLabel()}</b>. Запросов с этого устройства в этом месяце: <b>${n}</b>. Бесплатный лимит Табрики — ${MONTH_LIMIT.toLocaleString('ru-RU')} в месяц на все устройства; точный счётчик смотрите в Табрике: Настройки → Статистика.
+    <br>Запросов к базе с этого устройства в этом месяце: <b>${n}</b>. Бесплатный лимит Табрики — ${MONTH_LIMIT.toLocaleString('ru-RU')} в месяц на все устройства; точный счётчик смотрите в Табрике: Настройки → Статистика.
     ${economyMode() ? '<br><b>Экономный режим:</b> автообновление при открытии не чаще раза в час. Кнопка работает как обычно.' : ''}
     <br>Данные обновляются при открытии приложения, после ваших изменений и по кнопке в шапке. «Полная сверка» перечитывает всё заново.`;
 }
 
 function startSync() {
   setAuthLostHandler(() => { toast('Нужно войти заново', 2500); setTimeout(() => location.reload(), 800); });
-  const makeSync = (target, metaKey) => createSync({
-    api: api.forTarget(target), storage: localStorage, metaKey,
+  SYNC = createSync({
+    api, storage: localStorage,
     getState: () => S,
     setState: (next) => { S = next; ensureData(S); write('as.data', S); }
   });
-  PRIMARY_SYNC = makeSync('primary', 'as.sync');
-  BACKUP_SYNC = backupEnabled() ? makeSync('backup', 'as.sync.backup') : null;
-  if (storageTarget() === 'backup' && !validToken('backup')) setStorageTarget('primary');
-  SYNC = storageTarget() === 'backup' ? BACKUP_SYNC : PRIMARY_SYNC;
   const first = !SYNC.info().last;
   const due = Date.now() - read('as.lastPull', 0) > pullGap(false);
   if (first) toast('Первая синхронизация, это может занять до минуты', 3500);
@@ -1023,21 +863,12 @@ function openCloseMonth(ym) {
     syncBusy = true;
     paintSync();
     const r = await SYNC.closeMonth(ym, () => logEvent(`Закрыт месяц: ${monthName(ym)}`));
-    let copiedToBackup = false;
-    if ((r.ok || r.localClosed) && storageTarget() === 'primary' && BACKUP_SYNC && validToken('backup')) {
-      const mirror = await BACKUP_SYNC.sync({ full: !BACKUP_SYNC.info().last, ignoreRemoteOnly: true });
-      copiedToBackup = mirror.ok && BACKUP_SYNC.pendingCount() === 0;
-      if (copiedToBackup) write('as.backupMirror', { at: Date.now(), updatedAt: Number(S?.updatedAt) || 0 });
-      if (copiedToBackup && r.localClosed && r.status === 429) {
-        setStorageTarget('backup'); SYNC = BACKUP_SYNC; r.backupFailover = true;
-      }
-    }
     syncBusy = false;
     write('as.data', S);
-    if (r.ok || r.backupFailover) {
+    if (r.ok) {
       closeModal();
       render();
-      toast(`Месяц закрыт: ${r.count} операций заменены итогами${r.backupFailover ? ' и сохранены в резервной базе' : ''}${!copiedToBackup && validToken('backup') ? ' · резервную копию нужно сверить' : ''}`, 4500);
+      toast(`Месяц закрыт: ${r.count} операций заменены итогами`, 3000);
     } else if (r.localClosed) {
       closeModal();
       render();
