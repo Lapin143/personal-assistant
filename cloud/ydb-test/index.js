@@ -198,21 +198,34 @@ function normalizeSeedItem(x, index, now) {
 }
 async function seed(records, env, headers, now) {
   if (!env.SEED_SECRET || !safeEqual(headers['x-seed-key'], env.SEED_SECRET)) return { statusCode: 403, body: { error: 'seed_forbidden' } };
-  if (!Array.isArray(records) || records.length < 1 || records.length > 500) return { statusCode: 400, body: { error: 'bad_seed', message: 'Ожидается массив до 500 записей' } };
-  const normalized = records.map((r, i) => normalizeSeedItem(r, i, now));
-  const keys = new Set();
-  for (const r of normalized) {
-    const k = `${r.kind}|${r.key}`;
-    if (keys.has(k)) return { statusCode: 400, body: { error: 'duplicate_seed_key', key: k } };
-    keys.add(k);
+  let stage = 'validate';
+  try {
+    if (!Array.isArray(records) || records.length < 1 || records.length > 500) return { statusCode: 400, body: { error: 'bad_seed', message: 'Ожидается массив до 500 записей' } };
+    const normalized = records.map((r, i) => normalizeSeedItem(r, i, now));
+    const keys = new Set();
+    for (const r of normalized) {
+      const k = `${r.kind}|${r.key}`;
+      if (keys.has(k)) return { statusCode: 400, body: { error: 'duplicate_seed_key', key: k } };
+      keys.add(k);
+    }
+    stage = 'connect';
+    await initDb();
+    stage = 'read';
+    const existing = await driver.tableClient.withSession(async (s) => {
+      const result = await s.executeQuery(`SELECT record_id FROM ${TABLE};`);
+      return resultRows(result);
+    });
+    if (existing.length) return { statusCode: 409, body: { error: 'seed_target_not_empty', count: existing.length } };
+    const values = normalized.map((r) => `(${[sqlNumber(r.id), sqlString(r.kind), sqlString(r.key), sqlString(r.title), sqlString(r.date), String(r.amount), sqlString(r.category), sqlString(JSON.stringify(r.data)), sqlNumber(r.deleted), sqlNumber(r.updated)].join(', ')})`).join(',\n');
+    stage = 'write';
+    await driver.tableClient.withSession((s) => s.executeQuery(`UPSERT INTO ${TABLE} (record_id, kind, record_key, title, date, amount, category, data, deleted, updated) VALUES ${values};`));
+    const kinds = normalized.reduce((a, r) => (a[r.kind] = (a[r.kind] || 0) + 1, a), {});
+    const tombstones = normalized.filter((r) => r.deleted).length;
+    return { statusCode: 200, body: { ok: true, imported: normalized.length, active: normalized.length - tombstones, tombstones, kinds } };
+  } catch (err) {
+    console.error('YDB test seed failed:', stage, err && err.message);
+    return { statusCode: 500, body: { error: 'seed_failed', stage } };
   }
-  const existing = await allRows();
-  if (existing.length) return { statusCode: 409, body: { error: 'seed_target_not_empty', count: existing.length } };
-  const values = normalized.map((r) => `(${[sqlNumber(r.id), sqlString(r.kind), sqlString(r.key), sqlString(r.title), sqlString(r.date), String(r.amount), sqlString(r.category), sqlString(JSON.stringify(r.data)), sqlNumber(r.deleted), sqlNumber(r.updated)].join(', ')})`).join(',\n');
-  await withSession((s) => s.executeQuery(`UPSERT INTO ${TABLE} (record_id, kind, record_key, title, date, amount, category, data, deleted, updated) VALUES ${values};`));
-  const kinds = normalized.reduce((a, r) => (a[r.kind] = (a[r.kind] || 0) + 1, a), {});
-  const tombstones = normalized.filter((r) => r.deleted).length;
-  return { statusCode: 200, body: { ok: true, imported: normalized.length, active: normalized.length - tombstones, tombstones, kinds } };
 }
 
 function missingConfig(env) {
