@@ -800,8 +800,8 @@ function syncInfoHtml() {
   return `${i.last ? `Последняя синхронизация: ${fmtDate(iso(new Date(i.last)))} в ${hhmm(i.last)}.` : 'Синхронизации ещё не было.'}
     ${pending ? `Ждут отправки: ${pending}.` : 'Все изменения отправлены.'}
     ${i.error ? `<br><b>Последняя ошибка:</b> ${esc(i.error)}` : ''}
-    <br>Запросов к базе с этого устройства в этом месяце: <b>${n}</b>. Бесплатный лимит Табрики — ${MONTH_LIMIT.toLocaleString('ru-RU')} в месяц на все устройства; точный счётчик смотрите в Табрике: Настройки → Статистика.
-    ${economyMode() ? '<br><b>Экономный режим:</b> автообновление при открытии не чаще раза в час. Кнопка работает как обычно.' : ''}
+    <br>Запросов к базе с этого устройства в этом месяце: <b>${n}</b>. Тестовая версия подключена к YDB; лимит запросов Табрики здесь не применяется.
+
     <br>Данные обновляются при открытии приложения, после ваших изменений и по кнопке в шапке. «Полная сверка» перечитывает всё заново.`;
 }
 
@@ -849,7 +849,7 @@ function openCloseMonth(ym) {
     <div class="grid-2" style="margin-bottom:12px">
       <div class="stat"><div class="lbl">Доходы</div><div class="val pos">${money(inc)}</div></div>
       <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(exp)}</div></div></div>
-    <p class="note">Операций: ${txs.length}. На закрытие уйдёт примерно ${txs.length + 3} запросов к базе из ${MONTH_LIMIT.toLocaleString('ru-RU')} в месяц.</p>
+    <p class="note">Операций: ${txs.length}. Запросы тестовой версии не расходуют лимит Табрики.</p>
     <div class="warn-box" id="cm-err" hidden></div>
     <button class="btn block" id="cm-go">Скачать копию и закрыть месяц</button>`);
   $('#cm-go').onclick = async () => {
