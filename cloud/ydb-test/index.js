@@ -112,7 +112,7 @@ async function initDb() {
     driver = new Driver({ endpoint: process.env.YDB_ENDPOINT, database: process.env.YDB_DATABASE, authService: new MetadataAuthService() });
     readyPromise = (async () => {
       if (!(await driver.ready(10000))) throw new Error('YDB driver did not become ready');
-      await driver.tableClient.withSession((s) => s.executeQuery(`
+      await driver.tableClient.withSession((s) => s.executeSchemeQuery(`
         CREATE TABLE IF NOT EXISTS ${TABLE} (
           record_id Uint64 NOT NULL,
           kind Utf8 NOT NULL,
