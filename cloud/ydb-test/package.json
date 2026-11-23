@@ -1,0 +1,9 @@
+{
+  "name": "assistant-ydb-test-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "dependencies": {
+    "ydb-sdk": "^3.0.0"
+  }
+}
