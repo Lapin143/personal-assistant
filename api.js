@@ -88,7 +88,13 @@ export async function signInTarget(target, login, password) {
   return j;
 }
 export async function signIn(login, password) {
-  return signInTarget('primary', login, password);
+  const primary = await signInTarget('primary', login, password);
+  // Один логин для пользователя: резервный прокси получает тот же пароль при входе в приложение.
+  // Ошибка резерва не блокирует вход и доступ к основной базе.
+  if (backupEnabled()) {
+    try { await signInTarget('backup', login, password); } catch { /* покажем резерв как неподключённый */ }
+  }
+  return primary;
 }
 
 export const api = {
