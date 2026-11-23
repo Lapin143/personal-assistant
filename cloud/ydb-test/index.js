@@ -224,7 +224,10 @@ async function seed(records, env, headers, now) {
     return { statusCode: 200, body: { ok: true, imported: normalized.length, active: normalized.length - tombstones, tombstones, kinds } };
   } catch (err) {
     console.error('YDB test seed failed:', stage, err && err.message);
-    return { statusCode: 500, body: { error: 'seed_failed', stage } };
+    const detail = String((err && err.message) || err || 'unknown error')
+      .replace(/(token|password|secret)\s*[:=]\s*\S+/gi, '$1=[redacted]')
+      .slice(0, 240);
+    return { statusCode: 500, body: { error: 'seed_failed', stage, detail } };
   }
 }
 
