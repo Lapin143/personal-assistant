@@ -1,11 +1,10 @@
 // Связь с сервером: вход и запросы к функции-прокси в Yandex Cloud.
-// Браузер не обращается к Tabrica напрямую и не знает её токена.
-import { API } from './config.js?v=c1';
+// Браузер не подключается к YDB напрямую и не хранит секреты базы.
+import { API } from './config.js?v=c2';
 
 const SESSION_KEY = 'as.session';
 const COUNT_KEY = 'as.requests';
-export const MONTH_LIMIT = 1000;   // месячный лимит этой организации по настройкам пользователя
-export const DEVICE_SOFT = 400;    // бережный режим, чтобы оставить запас общему лимиту на втором устройстве
+export const DEVICE_SOFT = Number.MAX_SAFE_INTEGER; // в YDB приложению не нужен Tabrica-экономный режим
 
 export const authEnabled = () => Boolean(API.url);
 
@@ -23,7 +22,7 @@ export function validToken() {
 let onAuthLost = () => {};
 export const setAuthLostHandler = (fn) => { onAuthLost = fn; };
 
-// Счётчик запросов к базе с этого устройства за календарный месяц.
+// Справочный счётчик запросов к базе с этого устройства за календарный месяц.
 export function requestCount() {
   const ym = new Date().toISOString().slice(0, 7);
   try {
@@ -70,13 +69,13 @@ export async function signIn(login, password) {
 }
 
 export const api = {
-  // Один запрос к Tabrica: страница записей (все или изменённые после указанного времени).
+  // Одна страница записей (все или изменённые после указанного времени).
   async list({ where, limit, offset }) {
     const j = await raw('GET', { where, limit, offset: offset || undefined });
     addRequests(1);
     return { records: (j.data && j.data.records) || [], now: j.now };
   },
-  // Несколько изменений одним вызовом функции; каждая операция — один запрос к Tabrica.
+  // Несколько изменений одним вызовом функции.
   async batch(ops, { keepalive = false } = {}) {
     const j = await raw('POST', { action: 'batch' }, { ops }, { timeout: 60000, keepalive });
     addRequests(j.done || 0);

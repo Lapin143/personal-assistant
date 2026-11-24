@@ -2,7 +2,7 @@ import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './men
 import { featuresInit, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, extraReminders,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
   remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=c8';
-import { api, authEnabled, signIn, signOutLocal, validToken, getSession, setAuthLostHandler, requestCount, economyMode, MONTH_LIMIT } from './api.js?v=c2';
+import { api, authEnabled, signIn, signOutLocal, validToken, getSession, setAuthLostHandler, requestCount, economyMode } from './api.js?v=c3';
 import { createSync, allOps, isClosed } from './store.js?v=c6';
 import { iso, todayIso, daysBetween, upcoming, monthSummary, fuelStats, goalPct } from './core.js?v=c3';
 
@@ -800,8 +800,8 @@ function syncInfoHtml() {
   return `${i.last ? `Последняя синхронизация: ${fmtDate(iso(new Date(i.last)))} в ${hhmm(i.last)}.` : 'Синхронизации ещё не было.'}
     ${pending ? `Ждут отправки: ${pending}.` : 'Все изменения отправлены.'}
     ${i.error ? `<br><b>Последняя ошибка:</b> ${esc(i.error)}` : ''}
-    <br>Запросов к базе с этого устройства в этом месяце: <b>${n}</b>. Бесплатный лимит Табрики — ${MONTH_LIMIT.toLocaleString('ru-RU')} в месяц на все устройства; точный счётчик смотрите в Табрике: Настройки → Статистика.
-    ${economyMode() ? '<br><b>Экономный режим:</b> автообновление при открытии не чаще раза в час. Кнопка работает как обычно.' : ''}
+    <br>Запросов к базе с этого устройства в этом месяце: <b>${n}</b>. Основное приложение подключено к YDB; лимит запросов Табрики здесь не применяется.
+    ${economyMode() ? '<br><b>Экономный режим синхронизации</b>' : ''}
     <br>Данные обновляются при открытии приложения, после ваших изменений и по кнопке в шапке. «Полная сверка» перечитывает всё заново.`;
 }
 
@@ -809,6 +809,8 @@ function startSync() {
   setAuthLostHandler(() => { toast('Нужно войти заново', 2500); setTimeout(() => location.reload(), 800); });
   SYNC = createSync({
     api, storage: localStorage,
+    // Record IDs belong to a backend. Keep T1's old sync map intact for rollback.
+    metaKey: 'as.sync.ydb-production',
     getState: () => S,
     setState: (next) => { S = next; ensureData(S); write('as.data', S); }
   });
@@ -849,7 +851,7 @@ function openCloseMonth(ym) {
     <div class="grid-2" style="margin-bottom:12px">
       <div class="stat"><div class="lbl">Доходы</div><div class="val pos">${money(inc)}</div></div>
       <div class="stat"><div class="lbl">Расходы</div><div class="val neg">${money(exp)}</div></div></div>
-    <p class="note">Операций: ${txs.length}. На закрытие уйдёт примерно ${txs.length + 3} запросов к базе из ${MONTH_LIMIT.toLocaleString('ru-RU')} в месяц.</p>
+    <p class="note">Операций: ${txs.length}. Итоги и удаления будут отправлены в YDB после скачивания копии.</p>
     <div class="warn-box" id="cm-err" hidden></div>
     <button class="btn block" id="cm-go">Скачать копию и закрыть месяц</button>`);
   $('#cm-go').onclick = async () => {

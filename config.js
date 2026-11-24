@@ -1,6 +1,6 @@
-// Адрес функции-прокси в Yandex Cloud и имя таблицы.
-// Секретов здесь нет: токен Tabrica, ID базы и таблиц, пароли хранятся в переменных окружения функции.
+// Основной backend семейного ассистента: Yandex Serverless YDB через Cloud Function.
+// Секретов здесь нет; вход и доступ к базе проверяет функция.
 export const API = {
-  url: 'https://functions.yandexcloud.net/d4e4m399l6s8fn9mdfbk',
+  url: 'https://functions.yandexcloud.net/d4elho2hp0kfc6dr3r80',
   table: 'records'
 };

@@ -7,6 +7,30 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Ассистент">
   <title>Ассистент</title>
+  <script>
+    // YDB has different login tokens and row IDs. Keep T1's existing browser data
+    // untouched so the previous release can be restored without losing its cache.
+    (() => {
+      const proto = Storage.prototype;
+      const prefix = 'assistant-ydb-production:';
+      const get = proto.getItem, set = proto.setItem, remove = proto.removeItem, key = proto.key;
+      Object.defineProperties(proto, {
+        getItem: { configurable: true, value(name) { return get.call(this, prefix + name); } },
+        setItem: { configurable: true, value(name, value) { return set.call(this, prefix + name, value); } },
+        removeItem: { configurable: true, value(name) { return remove.call(this, prefix + name); } },
+        clear: { configurable: true, value() {
+          const keys = [];
+          for (let i = 0; i < this.length; i++) { const stored = key.call(this, i); if (stored?.startsWith(prefix)) keys.push(stored); }
+          for (const stored of keys) remove.call(this, stored);
+        } },
+        key: { configurable: true, value(index) {
+          const keys = [];
+          for (let i = 0; i < this.length; i++) { const stored = key.call(this, i); if (stored?.startsWith(prefix)) keys.push(stored.slice(prefix.length)); }
+          return keys[index] ?? null;
+        } }
+      });
+    })();
+  </script>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
@@ -54,6 +78,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=c8"></script>
+  <script type="module" src="app.js?v=c9"></script>
 </body>
 </html>

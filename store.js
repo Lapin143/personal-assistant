@@ -1,4 +1,4 @@
-// Синхронизация: состояние приложения ↔ записи таблицы Tabrica (через функцию-прокси).
+// Синхронизация: состояние приложения ↔ записи таблицы YDB через функцию-прокси.
 // Без DOM и без сети: транспорт и хранилище передаются снаружи, поэтому модуль проверяется тестами.
 //
 // Как лежат данные (одна таблица records, одна строка = одна сущность):
@@ -184,7 +184,7 @@ function parseData(v) {
   try { return JSON.parse(v); } catch { return null; }
 }
 
-// Запись из ответа Tabrica → строка в нашем виде. Чужие строки (без kind и key) пропускаются.
+// Запись из ответа функции → строка в нашем виде. Чужие строки (без kind и key) пропускаются.
 export function normRemote(rec) {
   if (!rec || typeof rec !== 'object') return null;
   const id = Number(rec.id ?? rec.row_id);
@@ -478,9 +478,9 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
     const b = (res && res.body) || {};
     const code = String(b.error || b.code || (b.detail && b.detail.code) || '');
     const msg = String(b.message || (typeof b.detail === 'string' ? b.detail : '') || '');
-    if (/row_limit_exceeded/.test(code + msg)) return 'В Табрике закончился лимит записей. Закройте старые месяцы в Финансах.';
-    if (/tabular_data_limit_exceeded/.test(code + msg)) return 'В Табрике закончился объём данных.';
-    if (res && res.status === 429) return 'Лимит запросов исчерпан. Синхронизация возобновится в новом расчётном периоде.';
+    if (/row_limit_exceeded/.test(code + msg)) return 'В базе превышен лимит записей.';
+    if (/tabular_data_limit_exceeded/.test(code + msg)) return 'Превышен доступный объём данных базы.';
+    if (res && res.status === 429) return 'Сервер временно ограничил частоту запросов. Повторите позже.';
     return `Ошибка сервера ${res ? res.status : ''}${msg ? ': ' + msg : code ? ': ' + code : ''}`.trim();
   };
 
@@ -504,7 +504,7 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
       }
       saveMeta();
       if (failed) {
-        // Tabrica не приняла JSON объектом: один раз пробуем отправить его строкой.
+        // Если функция не приняла JSON объектом, один раз пробуем отправить его строкой.
         const text = JSON.stringify(failed.body || '');
         const limit = /row_limit_exceeded|tabular_data_limit_exceeded/.test(text);
         const bad = [400, 413, 422].includes(failed.status) && !limit;
