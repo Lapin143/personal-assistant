@@ -273,3 +273,9 @@
 .lim-row .lim-avg{display:block;font-size:12px;color:var(--muted,#7a7a7a);margin-top:2px}
 .lim-avg-box{display:flex;flex-direction:column;gap:8px;margin:8px 0 12px;padding:10px;border-radius:12px;background:var(--row-line)}
 .lim-avg-box span{font-size:13px}
+
+/* Поле даты в формах: на телефонах оно имеет собственную ширину и смещалось */
+.form input[type="date"]{-webkit-appearance:none;appearance:none;display:block;box-sizing:border-box;width:100%;min-width:0;max-width:100%;min-height:46px;text-align:left;line-height:1.2}
+.form input[type="date"]::-webkit-date-and-time-value{text-align:left;margin:0;min-width:0}
+.form input[type="date"]::-webkit-calendar-picker-indicator{margin:0 0 0 auto}
+.form > *{min-width:0}

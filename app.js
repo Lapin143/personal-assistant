@@ -518,13 +518,12 @@ const ADD = {
     { k: 'date', t: 'date', l: 'Дата', v: todayIso() },
     { k: 'category', t: 'select', l: 'Категория', opts: catAll() },
     { k: 'personId', t: 'select', l: 'Чей', opts: [['', 'Общий'], ...S.people.map((p) => [p.id, p.name])], v: '' },
-    { k: 'private', t: 'check', l: 'Личное (видите только вы)', v: false },
     { k: 'note', t: 'text', l: 'Комментарий' }
   ], (o) => {
     if (!o.amount || o.amount <= 0) return 'Введите сумму';
     if (!o.date) return 'Укажите дату';
     S.transactions.push({ id: uid(), type: o.type, amount: o.amount, date: o.date, category: o.category || 'Прочее',
-      personId: o.personId, private: o.private, note: o.note });
+      personId: o.personId, private: false, note: o.note });
     logEvent(`${o.type === 'income' ? 'Доход' : 'Расход'} ${money(o.amount)}${o.category ? ' · ' + o.category : ''}`);
     return null;
   }),
