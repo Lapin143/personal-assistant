@@ -224,7 +224,7 @@ function viewDash() {
     <div class="home-goals card"><div class="home-goals-head"><div><div class="setting-title">Цели</div></div>
       <button class="btn soft" data-act="sec" data-v="goals">Все цели →</button></div>
       ${cushionGoalRow()}
-      ${S.goals.length ? S.goals.slice(0, 2).map(goalRow).join('') : '<div class="tomorrow-empty">Поставьте первую цель и двигайтесь к ней вместе.</div>'}</div>
+      ${S.goals.slice(0, 2).map(goalRow).join('')}</div>
     `;
 }
 
