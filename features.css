@@ -302,3 +302,30 @@
 .car-bar i{display:block;width:100%;min-height:3px;border-radius:6px 6px 3px 3px;background:var(--green,#2f7d5b);opacity:.55}
 .car-bar.is-cur i{opacity:1}
 .car-bar.is-cur span{font-weight:700;color:inherit}
+
+/* Раздел «Авто»: единая аналитика */
+.car-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.car-chart{display:grid;grid-template-columns:repeat(12,1fr);gap:4px;height:150px;margin:8px 0 6px}
+.car-col{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;gap:4px;min-width:0;padding:0;border:0;background:none;color:inherit;font:inherit;cursor:pointer}
+.car-plot{flex:1;display:flex;align-items:flex-end;min-height:0}
+.car-stack{width:100%;display:flex;flex-direction:column-reverse;border-radius:6px 6px 3px 3px;overflow:hidden;min-height:2px;transition:opacity .15s}
+.car-stack i{display:block;min-height:0}
+.car-col:not(.is-sel) .car-stack{opacity:.5}
+.car-col span{text-align:center;font-size:11px;color:var(--muted,#7a837f);padding:2px 0;border-radius:6px}
+.car-col.is-sel span{font-weight:800;color:inherit;background:var(--row-line)}
+.car-col.is-cur span::after{content:"";display:block;width:4px;height:4px;margin:2px auto 0;border-radius:50%;background:currentColor}
+.car-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted,#7a837f);margin-bottom:10px}
+.car-leg{display:inline-flex;align-items:center;gap:6px}
+.car-leg i,.car-dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex:0 0 auto;margin-right:6px}
+.car-leg i{margin-right:0}
+.car-chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.car-chips button{border:1px solid var(--row-line);background:var(--surface);color:inherit;border-radius:99px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}
+.car-chips button.active{background:var(--ink,#1f2a26);color:var(--bg,#fff);border-color:transparent}
+.car-detail{border-top:1px solid var(--row-line);padding-top:10px;margin-top:4px}
+.car-info{display:flex;align-items:flex-start;gap:8px;padding:10px 0;border-bottom:1px solid var(--row-line)}
+.car-info:last-child{border-bottom:0}
+.car-info .car-dot{margin-top:6px}
+.car-dues{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+.car-due{font-size:13px;color:var(--muted,#7a837f)}
+.car-due.warn-text{color:#c27a1a;font-weight:600}
+.car-due.neg{font-weight:600}

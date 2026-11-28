@@ -87,7 +87,6 @@ let FIN_MONTH = todayIso().slice(0, 7);
 let FIN_TAB = 'ops';
 let OPS_EXPANDED = false;
 let GOAL_KIND = 'long';
-let CAR_ID = null;
 
 // Разделы: нижняя панель (5 пунктов) и разделы внутри «Ещё».
 const SECTIONS = [
@@ -160,8 +159,12 @@ const opRow = (t) => (t.closed ? `<div class="li">
   <button class="icon-btn" data-act="editOp" data-id="${t.id}" aria-label="Изменить операцию">${svg('edit', 18)}</button>
   <button class="icon-btn" data-act="del" data-coll="transactions" data-id="${t.id}" aria-label="Удалить">${X}</button></div>`);
 
-// Единственный автомобиль подставляется сам, когда выбрана категория «Авто».
-const defaultCarId = () => (S.cars.length === 1 ? S.cars[0].id : '');
+// Какой автомобиль подставлять в новые расходы: основной; если основного нет, то единственный активный.
+const defaultCarId = () => {
+  const act = S.cars.filter((c) => !c.archived);
+  const main = act.find((c) => c.main);
+  return main ? main.id : act.length === 1 ? act[0].id : '';
+};
 function bindCarDefault() {
   const cat = $('#f_category');
   const car = $('#f_carId');
@@ -170,8 +173,11 @@ function bindCarDefault() {
   cat.addEventListener('change', fill);
   fill();
 }
-// Поле «Автомобиль» в форме операции показывается, только если автомобили добавлены.
-const carField = (v) => (S.cars.length ? [{ k: 'carId', t: 'select', l: 'Автомобиль', opts: [['', 'Без автомобиля'], ...S.cars.map((c) => [c.id, `${c.make} ${c.model}`.trim()])], v }] : []);
+// Поле «Автомобиль» в форме операции: только активные автомобили (и текущий автомобиль операции, даже если он в архиве).
+const carField = (v) => {
+  const list = S.cars.filter((c) => !c.archived || c.id === v);
+  return list.length ? [{ k: 'carId', t: 'select', l: 'Автомобиль', opts: [['', 'Без автомобиля'], ...list.map((c) => [c.id, `${c.make} ${c.model}`.trim()])], v }] : [];
+};
 const CAR_TYPES = { fuel: 'Топливо', service: 'ТО', repair: 'Ремонт', wash: 'Мойка', parking: 'Парковка', fine: 'Штраф', other: 'Прочее' };
 
 // ---------- регулярные платежи: операция появляется только после подтверждения ----------
@@ -363,67 +369,142 @@ function viewRem() {
   return remView();
 }
 
-// Расходы на авто берутся из обычных операций (поле «Автомобиль»), отдельно их вести не нужно.
+// ---------- Авто ----------
+// Расходы на авто берутся из обычных операций (категория «Авто» и поле «Автомобиль»), отдельно их вести не нужно.
 // Старые записи раздела (S.carExpenses) остаются в итогах как «прежние».
 let CAR_YEAR = null;
+let CAR_MONTH = null;
+let CAR_FILTER = '';
+const CAR_COLORS = ['#2f7d5b', '#d9822b', '#3f7fbf', '#a35bb5', '#c9505b', '#7a8a35'];
+const NO_CAR_COLOR = '#aab3ae';
 const carYear = () => CAR_YEAR || todayIso().slice(0, 4);
-const carName = (id) => { const c = S.cars.find((x) => x.id === id); return c ? `${c.make} ${c.model}`.trim() : ''; };
-const carOps = (carId) => [
-  ...allOps(S).filter((t) => t.carId === carId && t.type !== 'income' && (!t.private || t.personId === ME)),
-  ...(S.carExpenses || []).filter((e) => e.carId === carId).map((e) => ({ id: e.id, legacy: true, type: 'expense', amount: e.amount, date: e.date,
-    category: CAR_TYPES[e.type] || 'Авто', note: e.note || '' }))
-];
+const carLabel = (c) => `${c.make} ${c.model}`.trim();
+const carName = (id) => { const c = S.cars.find((x) => x.id === id); return c ? carLabel(c) : ''; };
+const carColor = (id) => { const i = S.cars.findIndex((x) => x.id === id); return i < 0 ? NO_CAR_COLOR : CAR_COLORS[i % CAR_COLORS.length]; };
+const activeCars = () => S.cars.filter((c) => !c.archived);
+// Расходы на авто: операции с автомобилем, операции категории «Авто» без автомобиля и прежние записи раздела.
+const carOps = () => {
+  const ok = (t) => t.type !== 'income' && (!t.private || t.personId === ME);
+  const ops = allOps(S).filter((t) => ok(t) && (t.carId || t.category === CAR_CATEGORY));
+  const legacy = (S.carExpenses || []).map((e) => ({ id: e.id, legacy: true, type: 'expense', carId: e.carId, amount: e.amount, date: e.date,
+    category: CAR_TYPES[e.type] || 'Авто', note: e.note || '' }));
+  return [...ops, ...legacy].filter((t) => !CAR_FILTER || t.carId === CAR_FILTER);
+};
+const sumAmt = (list) => list.reduce((a, e) => a + (Number(e.amount) || 0), 0);
+// Выбранный месяц: свой выбор; иначе текущий, а для прошлых лет последний месяц, в котором были расходы.
+const carMonthSel = (year, ops) => {
+  if (CAR_MONTH && CAR_MONTH.startsWith(year)) return CAR_MONTH;
+  const cur = todayIso().slice(0, 7);
+  if (cur.startsWith(year)) return cur;
+  const last = ops.map((e) => e.date.slice(0, 7)).filter((ym) => ym.startsWith(year)).sort().pop();
+  return last || `${year}-12`;
+};
+const plural = (n, a, b, c) => (n % 10 === 1 && n % 100 !== 11 ? a : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? b : c);
 
-function carCard(c) {
-  const open = CAR_ID === c.id;
-  const year = carYear();
-  const ym = todayIso().slice(0, 7);
-  const ops = carOps(c.id);
-  const sum = (list) => list.reduce((a, e) => a + (Number(e.amount) || 0), 0);
-  const month = sum(ops.filter((e) => e.date.startsWith(ym)));
-  const yearOps = ops.filter((e) => e.date.startsWith(year));
-  const yearTotal = sum(yearOps);
-  const perMonth = Array.from({ length: 12 }, (_, i) => sum(yearOps.filter((e) => e.date.slice(5, 7) === String(i + 1).padStart(2, '0'))));
-  const peak = Math.max(1, ...perMonth);
-  const byCat = {};
-  for (const e of yearOps) byCat[e.category] = (byCat[e.category] || 0) + (Number(e.amount) || 0);
-  const cats = Object.entries(byCat).sort((x, y) => y[1] - x[1]);
-  const MS = ['Я', 'Ф', 'М', 'А', 'М', 'И', 'И', 'А', 'С', 'О', 'Н', 'Д'];
-  const monthOps = ops.filter((e) => e.date.startsWith(ym)).sort((x, y) => (x.date < y.date ? 1 : -1));
-  return `<div class="card">
-    <div class="row" style="justify-content:space-between">
-      <div data-act="carOpen" data-id="${c.id}" style="cursor:pointer;flex:1">
-        <div class="setting-title" style="margin:0">${esc(c.make)} ${esc(c.model)} ${c.year ? `<span class="note">${esc(c.year)}</span>` : ''}</div>
-        <div class="note">${esc(c.plate || '')}${c.mileage ? ' · пробег ' + Number(c.mileage).toLocaleString('ru-RU') + ' км' : ''}</div></div>
-      <button class="icon-btn" data-act="editCar" data-id="${c.id}" aria-label="Изменить автомобиль">${svg('edit', 18)}</button>
-      <button class="icon-btn" data-act="del" data-coll="cars" data-id="${c.id}" aria-label="Удалить">${X}</button></div>
-    <div class="grid-2" style="margin-top:10px">
-      <div class="stat"><div class="lbl">Потрачено в этом месяце</div><div class="val">${money(month)}</div></div>
-      <div class="stat"><div class="lbl">За ${esc(year)} год</div><div class="val">${money(yearTotal)}</div></div></div>
-    ${c.insuranceUntil ? `<div class="note" style="margin-top:8px">Страховка до ${fmtDate(c.insuranceUntil)}</div>` : ''}
-    ${c.inspectionUntil ? `<div class="note">Техосмотр до ${fmtDate(c.inspectionUntil)}</div>` : ''}
-    ${open ? `<div class="sub-title">Статистика за ${esc(year)} год</div>
-      <div class="car-bars" role="img" aria-label="Расходы по месяцам">${perMonth.map((v, i) => `<div class="car-bar${year + '-' + String(i + 1).padStart(2, '0') === ym ? ' is-cur' : ''}" title="${money(v)}"><i style="height:${Math.round((v / peak) * 100)}%"></i><span>${MS[i]}</span></div>`).join('')}</div>
-      ${cats.length ? cats.map(([cat, v]) => `<div class="cat-row"><span>${esc(cat)}</span><span>${yearTotal ? Math.round((v / yearTotal) * 100) : 0}%</span><span>${money(v)}</span></div>`).join('')
-        : '<div class="empty">За этот год расходов нет</div>'}
-      <div class="row" style="justify-content:space-between;margin-top:12px"><div class="sub-title" style="margin:0">Расходы этого месяца</div>
-        <button class="btn" data-act="addOp" data-car="${c.id}">+ Расход</button></div>
-      ${monthOps.length ? monthOps.map((e) => (e.legacy ? `<div class="li"><div class="main"><div class="t">${esc(e.category)}<span class="badge-private">прежняя запись</span></div>
-        <div class="s">${fmtDate(e.date)}${e.note ? ' · ' + esc(e.note) : ''}</div></div><div class="amt exp">−${money(e.amount)}</div>
-        <button class="icon-btn" data-act="del" data-coll="carExpenses" data-id="${e.id}" aria-label="Удалить">${X}</button></div>` : opRow(e))).join('')
-        : '<div class="empty">В этом месяце расходов на авто нет</div>'}
-      <p class="note">Расходы вносятся как обычные операции с выбранным автомобилем, поэтому они сразу попадают в «Финансы» и в лимиты.</p>` : ''}
-  </div>`;
+// Срок страховки и техосмотра: сколько осталось дней, красный — если меньше месяца.
+function dueNote(label, date) {
+  if (!date) return '';
+  const left = daysBetween(todayIso(), date);
+  const cls = left < 0 ? 'neg' : left <= 30 ? 'warn-text' : '';
+  const txt = left < 0 ? `просрочено на ${-left} ${plural(-left, 'день', 'дня', 'дней')}` : left === 0 ? 'сегодня' : `через ${left} ${plural(left, 'день', 'дня', 'дней')}`;
+  return `<span class="car-due ${cls}">${label} до ${fmtDate(date)} · ${txt}</span>`;
 }
 
 function viewCar() {
-  const y = carYear();
-  return `<div class="row" style="justify-content:space-between;margin-bottom:8px">
-    <div class="row" style="gap:4px"><button class="icon-btn" data-act="carYear" data-d="-1" aria-label="Предыдущий год">${svg('left', 18)}</button><strong>${esc(y)}</strong>
+  const year = carYear();
+  const cur = todayIso().slice(0, 7);
+  const head = `<div class="car-head">
+    <div class="row" style="gap:4px"><button class="icon-btn" data-act="carYear" data-d="-1" aria-label="Предыдущий год">${svg('left', 18)}</button><strong>${esc(year)}</strong>
       <button class="icon-btn" data-act="carYear" data-d="1" aria-label="Следующий год">${svg('right', 18)}</button></div>
-    <button class="btn" data-act="addCar">+ Автомобиль</button></div>
-    ${S.cars.length ? S.cars.map(carCard).join('') : '<div class="card empty">Добавьте автомобиль, чтобы видеть расходы за месяц и год</div>'}`;
+    <div class="row" style="gap:6px">
+      ${S.cars.length ? `<button class="btn" data-act="addOp" data-cat="auto">+ Расход</button>` : ''}
+      <button class="icon-btn" data-act="carsSettings" aria-label="Настройки автомобилей">⚙</button></div></div>`;
+  if (!S.cars.length) {
+    return head + `<div class="card empty">Добавьте автомобиль, чтобы видеть расходы за месяц и год.
+      <div style="margin-top:10px"><button class="btn" data-act="addCar">+ Автомобиль</button></div></div>`;
+  }
+  const ops = carOps();
+  const yearOps = ops.filter((e) => e.date.startsWith(year));
+  const yearTotal = sumAmt(yearOps);
+  const monthTotal = sumAmt(ops.filter((e) => e.date.startsWith(cur)));
+  const prevYm = (() => { const [y, m] = cur.split('-').map(Number); const d = new Date(y, m - 2, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })();
+  const prevTotal = sumAmt(ops.filter((e) => e.date.startsWith(prevYm)));
+  const delta = prevTotal ? Math.round(((monthTotal - prevTotal) / prevTotal) * 100) : null;
+  const monthsPassed = year === cur.slice(0, 4) ? Number(cur.slice(5)) : year < cur.slice(0, 4) ? 12 : 0;
+  const avg = monthsPassed ? yearTotal / monthsPassed : 0;
+  const byCatYear = {};
+  for (const e of yearOps) byCatYear[e.category || 'Прочее'] = (byCatYear[e.category || 'Прочее'] || 0) + (Number(e.amount) || 0);
+  const top = Object.entries(byCatYear).sort((x, y) => y[1] - x[1])[0];
+
+  const stats = `<div class="grid-2">
+      <div class="stat"><div class="lbl">Потрачено в этом месяце</div><div class="val">${money(monthTotal)}</div>
+        <div class="note">${delta === null ? 'в прошлом месяце расходов не было' : `${delta > 0 ? '+' : delta < 0 ? '−' : ''}${Math.abs(delta)}% к прошлому месяцу`}</div></div>
+      <div class="stat"><div class="lbl">За ${esc(year)} год</div><div class="val">${money(yearTotal)}</div>
+        <div class="note">${avg ? `в среднем ${money(avg)} в месяц` : 'за этот год расходов нет'}</div></div></div>
+    ${top ? `<div class="note" style="margin-top:8px">Самая большая статья года: <b>${esc(top[0])}</b> · ${money(top[1])} (${yearTotal ? Math.round((top[1] / yearTotal) * 100) : 0}%)</div>` : ''}`;
+
+  // График: столбец месяца разбит цветами по автомобилям.
+  const ids = [...S.cars.map((c) => c.id), ''];
+  const perMonth = Array.from({ length: 12 }, (_, i) => {
+    const ym = `${year}-${String(i + 1).padStart(2, '0')}`;
+    const list = ops.filter((e) => e.date.startsWith(ym));
+    const split = ids.map((id) => [id, sumAmt(list.filter((e) => (e.carId || '') === id || (id === '' && !S.cars.some((c) => c.id === e.carId)))) ]).filter(([, v]) => v > 0);
+    return { ym, list, split, total: sumAmt(list) };
+  });
+  const peak = Math.max(1, ...perMonth.map((m) => m.total));
+  const sel = carMonthSel(year, ops);
+  const MS = ['Я', 'Ф', 'М', 'А', 'М', 'И', 'И', 'А', 'С', 'О', 'Н', 'Д'];
+  const cols = perMonth.map((m, i) => `<button class="car-col${m.ym === sel ? ' is-sel' : ''}${m.ym === cur ? ' is-cur' : ''}" data-act="carMonth" data-ym="${m.ym}" aria-pressed="${m.ym === sel}"
+      aria-label="${esc(monthName(m.ym))}: ${money(m.total)}">
+      <div class="car-plot"><div class="car-stack" style="height:${m.total ? Math.max(4, Math.round((m.total / peak) * 100)) : 2}%">
+        ${m.total ? m.split.map(([id, v]) => `<i style="flex:${v} 0 0;background:${id ? carColor(id) : NO_CAR_COLOR}"></i>`).join('') : '<i style="flex:1 0 0;background:var(--row-line)"></i>'}</div></div>
+      <span>${MS[i]}</span></button>`).join('');
+  const legendIds = ids.filter((id) => (id ? S.cars.some((c) => c.id === id) : perMonth.some((m) => m.split.some(([k]) => k === ''))));
+  const legend = legendIds.map((id) => {
+    const c = S.cars.find((x) => x.id === id);
+    return `<span class="car-leg"><i style="background:${id ? carColor(id) : NO_CAR_COLOR}"></i>${id ? esc(carLabel(c)) + (c.archived ? ' · архив' : '') : 'Автомобиль не указан'}</span>`;
+  }).join('');
+  const chips = S.cars.length > 1 ? `<div class="car-chips"><button class="${CAR_FILTER ? '' : 'active'}" data-act="carFilter" data-id="">Все</button>${S.cars.map((c) => `<button class="${CAR_FILTER === c.id ? 'active' : ''}" data-act="carFilter" data-id="${c.id}">${esc(carLabel(c))}</button>`).join('')}</div>` : '';
+
+  // Данные выбранного месяца.
+  const m = perMonth.find((x) => x.ym === sel) || { list: [], split: [], total: 0 };
+  const catMonth = {};
+  for (const e of m.list) catMonth[e.category || 'Прочее'] = (catMonth[e.category || 'Прочее'] || 0) + (Number(e.amount) || 0);
+  const detail = `<div class="car-detail"><div class="row" style="justify-content:space-between;align-items:baseline"><div class="sub-title" style="margin:0;text-transform:capitalize">${esc(monthName(sel))}</div><b>${money(m.total)}</b></div>
+    ${m.split.length > 1 || (m.split.length === 1 && S.cars.length > 1) ? m.split.map(([id, v]) => `<div class="cat-row"><span><i class="car-dot" style="background:${id ? carColor(id) : NO_CAR_COLOR}"></i>${id ? esc(carName(id) || 'Удалённый автомобиль') : 'Автомобиль не указан'}</span><span>${m.total ? Math.round((v / m.total) * 100) : 0}%</span><span>${money(v)}</span></div>`).join('') : ''}
+    ${Object.entries(catMonth).length ? `<div class="note" style="margin:8px 0 2px">По категориям</div>${Object.entries(catMonth).sort((x, y) => y[1] - x[1]).map(([c, v]) => `<div class="cat-row"><span>${esc(c)}</span><span>${m.total ? Math.round((v / m.total) * 100) : 0}%</span><span>${money(v)}</span></div>`).join('')}` : ''}
+    ${m.list.length ? `<div class="note" style="margin:10px 0 2px">Расходы</div>${[...m.list].sort((x, y) => (x.date < y.date ? 1 : -1)).map((e) => (e.legacy
+      ? `<div class="li"><div class="main"><div class="t">${esc(e.category)}<span class="badge-private">прежняя запись</span></div><div class="s">${fmtDate(e.date)}${e.note ? ' · ' + esc(e.note) : ''}</div></div>
+        <div class="amt exp">−${money(e.amount)}</div><button class="icon-btn" data-act="del" data-coll="carExpenses" data-id="${e.id}" aria-label="Удалить">${X}</button></div>`
+      : opRow(e))).join('')}` : '<div class="empty">В этом месяце расходов на авто нет</div>'}</div>`;
+
+  const garage = activeCars().map((c) => `<div class="car-info"><i class="car-dot" style="background:${carColor(c.id)}"></i>
+      <div class="main"><div class="t">${esc(carLabel(c))}${c.main && activeCars().length > 1 ? '<span class="badge-private">основной</span>' : ''}${c.year ? ` <span class="note">${esc(c.year)}</span>` : ''}</div>
+        <div class="s">${esc(c.plate || '')}${c.mileage ? (c.plate ? ' · ' : '') + 'пробег ' + Number(c.mileage).toLocaleString('ru-RU') + ' км' : ''}</div>
+        <div class="car-dues">${dueNote('Страховка', c.insuranceUntil)}${dueNote('Техосмотр', c.inspectionUntil)}</div></div></div>`).join('');
+
+  return head + `<div class="card">${stats}</div>
+    <div class="card"><div class="setting-title">Расходы по месяцам</div>${chips}
+      <p class="setting-desc">Нажмите на столбец, чтобы посмотреть данные месяца. Цвета показывают, на какой автомобиль потрачено.</p>
+      <div class="car-chart">${cols}</div><div class="car-legend">${legend}</div>${detail}</div>
+    ${garage ? `<div class="card"><div class="setting-title">Автомобили</div>${garage}</div>` : ''}`;
 }
+
+// Окно настроек: основной автомобиль, правка, архив, добавление.
+function carsModalHtml() {
+  const row = (c) => `<div class="rc-row${c.archived ? ' is-off' : ''}"><i class="car-dot" style="background:${carColor(c.id)}"></i>
+    <div class="main" style="flex:1;min-width:0"><div class="t">${esc(carLabel(c))}</div><div class="s">${esc(c.plate || '')}${c.archived ? (c.plate ? ' · ' : '') + 'в архиве' : ''}</div></div>
+    ${c.archived ? '' : `<span class="note">основной</span><button class="rc-switch" role="switch" aria-checked="${Boolean(c.main)}" data-act="carMainToggle" data-id="${c.id}" aria-label="Основной автомобиль: ${esc(carLabel(c))}"><i></i></button>`}
+    <button class="icon-btn" data-act="editCar" data-id="${c.id}" aria-label="Изменить">${svg('edit', 18)}</button>
+    <button class="btn soft" data-act="carArchive" data-id="${c.id}">${c.archived ? 'Вернуть' : 'В архив'}</button></div>`;
+  const act = S.cars.filter((c) => !c.archived);
+  const arch = S.cars.filter((c) => c.archived);
+  return `<p class="setting-desc">Основной автомобиль подставляется при оформлении трат. Автомобиль из архива не предлагается в новых расходах, но вся его статистика сохраняется. Удалить автомобиль нельзя, чтобы не потерять данные.</p>
+    <div class="rc-list">${act.map(row).join('') || '<div class="empty">Нет активных автомобилей</div>'}</div>
+    ${arch.length ? `<div class="sub-title">Архив</div><div class="rc-list">${arch.map(row).join('')}</div>` : ''}
+    <button class="btn block" data-act="addCar">+ Добавить автомобиль</button>`;
+}
+const openCarsModal = () => plannerCtx.openModal('Автомобили', carsModalHtml());
 
 // Раздел «Ещё»: всё, что не поместилось в нижнюю панель.
 function viewMore() {
@@ -556,8 +637,8 @@ const ADD = {
     { k: 'type', t: 'select', l: 'Тип', opts: [['expense', 'Расход'], ['income', 'Доход']], v: 'expense' },
     { k: 'amount', t: 'number', l: 'Сумма', ph: '0' },
     { k: 'date', t: 'date', l: 'Дата', v: todayIso() },
-    { k: 'category', t: 'select', l: 'Категория', opts: catAll(), v: d.car && catAll().some(([c]) => c === 'Авто') ? 'Авто' : undefined },
-    ...carField(d.car || ''),
+    { k: 'category', t: 'select', l: 'Категория', opts: catAll(), v: d.cat && catAll().some(([c]) => c === CAR_CATEGORY) ? CAR_CATEGORY : undefined },
+    ...carField(d.cat ? defaultCarId() : ''),
     { k: 'personId', t: 'select', l: 'Чей', opts: [['', 'Общий'], ...S.people.map((p) => [p.id, p.name])], v: '' },
     { k: 'note', t: 'text', l: 'Комментарий' }
   ], (o) => {
@@ -614,7 +695,7 @@ const ADD = {
   ], (o) => {
     if (!o.make || !o.model) return 'Укажите марку и модель';
     S.cars.push({ id: uid(), make: o.make, model: o.model, year: o.year || '', plate: o.plate, mileage: o.mileage || '',
-      insuranceUntil: o.insuranceUntil, inspectionUntil: o.inspectionUntil });
+      insuranceUntil: o.insuranceUntil, inspectionUntil: o.inspectionUntil, main: !S.cars.some((c) => c.main && !c.archived) });
     linkCarOps(S);
     return null;
   }),
@@ -651,7 +732,6 @@ const ACTIONS = {
   opsToggle: () => { OPS_EXPANDED = !OPS_EXPANDED; },
   finTab: (d) => { FIN_TAB = d.v; },
   goalKind: (d) => { GOAL_KIND = d.v; },
-  carOpen: (d) => { CAR_ID = CAR_ID === d.id ? null : d.id; },
   del: (d) => {
     if (!confirm('Удалить запись?')) return false;
     S[d.coll] = S[d.coll].filter((x) => x.id !== d.id);
@@ -744,7 +824,27 @@ const ACTIONS = {
     });
     return false;
   },
-  carYear: (d) => { CAR_YEAR = String(Number(carYear()) + Number(d.d)); },
+  carYear: (d) => { CAR_YEAR = String(Number(carYear()) + Number(d.d)); CAR_MONTH = null; },
+  carMonth: (d) => { CAR_MONTH = d.ym; },
+  carFilter: (d) => { CAR_FILTER = d.id || ''; },
+  carsSettings: () => { openCarsModal(); return false; },
+  carMainToggle: (d) => {
+    const c = S.cars.find((x) => x.id === d.id);
+    if (!c || c.archived) return false;
+    const on = !c.main;
+    for (const x of S.cars) x.main = false; // основной автомобиль только один
+    c.main = on;
+    openCarsModal();
+  },
+  carArchive: (d) => {
+    const c = S.cars.find((x) => x.id === d.id);
+    if (!c) return false;
+    if (!c.archived && !confirm(`Отправить «${carLabel(c)}» в архив? Статистика сохранится, но в новых расходах автомобиль предлагаться не будет.`)) return false;
+    c.archived = !c.archived;
+    if (c.archived) c.main = false;
+    if (CAR_FILTER === c.id && c.archived) CAR_FILTER = '';
+    openCarsModal();
+  },
   saveNames: () => {
     let changed = 0;
     for (const p of S.people) {
