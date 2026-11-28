@@ -1,7 +1,7 @@
 import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b12';
 import { featuresInit, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, cushionGoalRow, categoryLimitInfo, extraReminders,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
-  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=c9';
+  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL } from './features.js?v=c10';
 import { api, authEnabled, signIn, signOutLocal, validToken, getSession, setAuthLostHandler, requestCount, economyMode } from './api.js?v=c3';
 import { createSync, allOps, isClosed } from './store.js?v=c6';
 import { iso, todayIso, daysBetween, upcoming, monthSummary, fuelStats, goalPct } from './core.js?v=c3';
@@ -422,7 +422,6 @@ function viewPeople() {
       <p class="setting-desc">За сколько дней показывать события в колокольчике.</p>
       <label class="field" for="notify-days">Дней заранее</label><input id="notify-days" type="number" min="0" max="30" value="${S.settings.notifyDaysAhead}">
       <div class="pill-row"><button class="btn soft" data-act="saveSettings">Сохранить</button></div></div>
-    ${remCatsSettingsHtml()}
 
     <div class="sub-title">Оформление</div>
     <div class="card"><div class="setting-title">Тема</div>
