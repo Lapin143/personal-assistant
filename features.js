@@ -674,7 +674,8 @@ export function remView() {
       <button class="icon-btn" data-act="remNav" data-d="-1" aria-label="Предыдущий месяц">‹</button>
       <div class="pl-week-title"><strong style="text-transform:capitalize">${monthTitle(REM_MONTH)}</strong></div>
       <button class="icon-btn" data-act="remNav" data-d="1" aria-label="Следующий месяц">›</button></div>
-    <div class="cal-legend">${legend}</div>
+    <div class="cal-legend-row"><div class="cal-legend">${legend}</div>
+      <button class="icon-btn" data-act="remCatsOpen" aria-label="Категории напоминаний">⚙</button></div>
     <div class="cal-grid cal-head">${CAL_DOW.map((d) => `<span>${d}</span>`).join('')}</div>
     <div class="cal-grid">${cells.join('')}</div>
     <div class="card" style="margin-top:12px">
@@ -702,24 +703,27 @@ const remCatList = () => S().remCats || REM_CATS_DEFAULT();
 
 // Какая категория открыта для переименования и удаления (карандашик).
 let REM_CAT_EDIT = null;
-export function remCatsSettingsHtml() {
+const catColor = (id) => (BUILTIN_CATS.includes(id) ? `cal-${id}` : 'cal-custom');
+// Окно «Категории напоминаний» открывается шестерёнкой в календаре.
+function remCatsModalHtml() {
   const cats = remCatList();
-  return `<div class="card"><div class="setting-title">Категории напоминаний</div>
-    <p class="setting-desc">Выключенная категория скрывается из календаря и колокольчика.</p>
-    ${cats.map((c) => {
-      const editing = REM_CAT_EDIT === c.id;
-      return `<div class="li cat-li">
-        <input type="checkbox" id="rco_${c.id}" ${c.on ? 'checked' : ''} aria-label="Показывать: ${esc(c.name)}">
-        ${editing ? `<input id="rc_${c.id}" class="cat-name-input" value="${esc(c.name)}" aria-label="Название категории">`
-                  : `<span class="t cat-name">${esc(c.name)}</span>`}
-        <button class="icon-btn" data-act="remCatEdit" data-id="${c.id}" aria-label="${editing ? 'Готово' : 'Изменить категорию'}">${svg(editing ? 'check' : 'edit', 18)}</button>
-        ${editing && !BUILTIN_CATS.includes(c.id) ? `<button class="icon-btn" data-act="remCatDel" data-id="${c.id}" aria-label="Удалить категорию">${X()}</button>` : ''}
-      </div>`;
-    }).join('')}
-    <div class="row" style="margin-top:10px"><input id="rc_new" placeholder="Например, «Вывоз мусора»" aria-label="Новая категория" style="flex:1;min-width:0">
-      <button class="btn soft" data-act="remCatAdd">Добавить</button></div>
-    <div class="pill-row" style="margin-top:10px"><button class="btn" data-act="remCatSave">Сохранить категории</button></div></div>`;
+  const rows = cats.map((c) => {
+    const editing = REM_CAT_EDIT === c.id;
+    return `<div class="rc-row ${c.on ? '' : 'is-off'}">
+      <i class="cal-dot ${catColor(c.id)}"></i>
+      ${editing ? `<input id="rc_${c.id}" class="rc-input" value="${esc(c.name)}" aria-label="Название категории" maxlength="40">`
+                : `<span class="rc-name">${esc(c.name)}</span>`}
+      <button class="icon-btn" data-act="remCatEdit" data-id="${c.id}" aria-label="${editing ? 'Готово' : 'Переименовать'}">${svg(editing ? 'check' : 'edit', 18)}</button>
+      ${editing && !BUILTIN_CATS.includes(c.id) ? `<button class="icon-btn" data-act="remCatDel" data-id="${c.id}" aria-label="Удалить категорию">${X()}</button>` : ''}
+      <button class="rc-switch" role="switch" aria-checked="${c.on}" data-act="remCatToggle" data-id="${c.id}" aria-label="Показывать: ${esc(c.name)}"><i></i></button>
+    </div>`;
+  }).join('');
+  return `<p class="setting-desc">Выключенная категория скрывается из календаря и колокольчика.</p>
+    <div class="rc-list">${rows}</div>
+    <div class="rc-add"><input id="rc_new" placeholder="Новая категория, например «Вывоз мусора»" aria-label="Новая категория" maxlength="40">
+      <button class="btn" data-act="remCatAdd">Добавить</button></div>`;
 }
+const refreshCatsModal = () => F.openModal('Категории напоминаний', remCatsModalHtml());
 
 export function dashTop() {
   const t = today();
@@ -763,8 +767,6 @@ function reportText(month) {
 function readCatsFromDom() {
   const cats = remCatList();
   for (const c of cats) {
-    const cb = document.getElementById('rco_' + c.id);
-    if (cb) c.on = cb.checked;
     const nm = document.getElementById('rc_' + c.id);
     if (nm && nm.value.trim()) c.name = nm.value.trim();
   }
@@ -772,31 +774,31 @@ function readCatsFromDom() {
 }
 
 export const EXTRA_CATS_ACTIONS = {
-  remCatSave: () => {
-    const cats = remCatList();
-    for (const c of cats) {
-      const name = (document.getElementById('rc_' + c.id)?.value || '').trim();
-      if (name) c.name = name;
-      const cb = document.getElementById('rco_' + c.id);
-      if (cb) c.on = cb.checked;
-    }
+  remCatsOpen: () => { refreshCatsModal(); return false; },
+  remCatToggle: (d) => {
+    const cats = readCatsFromDom();
+    const c = cats.find((x) => x.id === d.id);
+    if (c) c.on = !c.on;
     S().remCats = cats;
-    F.toast('Категории сохранены');
+    refreshCatsModal();
   },
   remCatAdd: () => {
     const name = (document.getElementById('rc_new')?.value || '').trim();
     if (!name) return false;
-    S().remCats = [...remCatList(), { id: 'c' + uid(), name, on: true }];
+    S().remCats = [...readCatsFromDom(), { id: 'c' + uid(), name, on: true }];
+    refreshCatsModal();
   },
   remCatEdit: (d) => {
     const cats = readCatsFromDom();
     REM_CAT_EDIT = REM_CAT_EDIT === d.id ? null : d.id;
     S().remCats = cats;
+    refreshCatsModal();
   },
   remCatDel: (d) => {
     S().remCats = readCatsFromDom().filter((c) => c.id !== d.id);
     REM_CAT_EDIT = null;
     for (const r of S().reminders) if (r.cat === d.id) r.cat = 'rem';
+    refreshCatsModal();
   },
   listRename: (d) => {
     const obj = itemOf('lists', d.id);
