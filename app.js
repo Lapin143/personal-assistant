@@ -1,7 +1,7 @@
 import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b12';
-import { featuresInit, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, cushionGoalRow, categoryLimitInfo, extraReminders,
+import { featuresInit, ensureData, linkCarOps, CAR_CATEGORY, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, cushionGoalRow, categoryLimitInfo, extraReminders,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
-  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL } from './features.js?v=c10';
+  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL } from './features.js?v=c11';
 import { api, authEnabled, signIn, signOutLocal, validToken, getSession, setAuthLostHandler, economyMode } from './api.js?v=c3';
 import { createSync, allOps, isClosed } from './store.js?v=c9';
 import { iso, todayIso, daysBetween, upcoming, monthSummary, goalPct } from './core.js?v=c3';
@@ -160,6 +160,16 @@ const opRow = (t) => (t.closed ? `<div class="li">
   <button class="icon-btn" data-act="editOp" data-id="${t.id}" aria-label="Изменить операцию">${svg('edit', 18)}</button>
   <button class="icon-btn" data-act="del" data-coll="transactions" data-id="${t.id}" aria-label="Удалить">${X}</button></div>`);
 
+// Единственный автомобиль подставляется сам, когда выбрана категория «Авто».
+const defaultCarId = () => (S.cars.length === 1 ? S.cars[0].id : '');
+function bindCarDefault() {
+  const cat = $('#f_category');
+  const car = $('#f_carId');
+  if (!cat || !car) return;
+  const fill = () => { if (cat.value === CAR_CATEGORY && !car.value) car.value = defaultCarId(); };
+  cat.addEventListener('change', fill);
+  fill();
+}
 // Поле «Автомобиль» в форме операции показывается, только если автомобили добавлены.
 const carField = (v) => (S.cars.length ? [{ k: 'carId', t: 'select', l: 'Автомобиль', opts: [['', 'Без автомобиля'], ...S.cars.map((c) => [c.id, `${c.make} ${c.model}`.trim()])], v }] : []);
 const CAR_TYPES = { fuel: 'Топливо', service: 'ТО', repair: 'Ремонт', wash: 'Мойка', parking: 'Парковка', fine: 'Штраф', other: 'Прочее' };
@@ -190,7 +200,8 @@ function resolvePayment(rid, ym, status, fact = {}) {
     S.transactions.push({
       id: uid(), type: 'expense', amount: fact.amount ?? r.amount, date: fact.date || dueDateOf(r, ym), category: r.category || 'Прочее',
       personId: r.personId || '', private: false,
-      note: `Регулярный: ${r.title}`, fromRecurring: r.id
+      note: `Регулярный: ${r.title}`, fromRecurring: r.id,
+      ...((r.category || '') === CAR_CATEGORY && defaultCarId() ? { carId: defaultCarId() } : {})
     });
   }
   S.confirmed[payKey(r, ym)] = { status, at: todayIso() };
@@ -541,7 +552,7 @@ function bindChange() {
 const ADD = {
   ...FEATURE_ADD,
   ...EXTRA_ADD,
-  addOp: (d = {}) => openForm('Новая операция', [
+  addOp: (d = {}) => { openForm('Новая операция', [
     { k: 'type', t: 'select', l: 'Тип', opts: [['expense', 'Расход'], ['income', 'Доход']], v: 'expense' },
     { k: 'amount', t: 'number', l: 'Сумма', ph: '0' },
     { k: 'date', t: 'date', l: 'Дата', v: todayIso() },
@@ -556,7 +567,7 @@ const ADD = {
       personId: o.personId, private: false, note: o.note, ...(o.carId ? { carId: o.carId } : {}) });
     logEvent(`${o.type === 'income' ? 'Доход' : 'Расход'} ${money(o.amount)}${o.category ? ' · ' + o.category : ''}`);
     return null;
-  }),
+  }); bindCarDefault(); },
   addRec: () => openForm('Регулярный платёж', [
     { k: 'title', t: 'text', l: 'Название', ph: 'Аренда, интернет, подписка' },
     { k: 'amount', t: 'number', l: 'Сумма в месяц' },
@@ -604,6 +615,7 @@ const ADD = {
     if (!o.make || !o.model) return 'Укажите марку и модель';
     S.cars.push({ id: uid(), make: o.make, model: o.model, year: o.year || '', plate: o.plate, mileage: o.mileage || '',
       insuranceUntil: o.insuranceUntil, inspectionUntil: o.inspectionUntil });
+    linkCarOps(S);
     return null;
   }),
   addPerson: () => openForm('Новый человек', [{ k: 'name', t: 'text', l: 'Имя' }], (o) => {
@@ -666,6 +678,7 @@ const ACTIONS = {
       logEvent(`Изменена операция: ${money(o.amount)} · ${o.category || 'Прочее'}`);
       return null;
     });
+    bindCarDefault();
     return false;
   },
   toggleRec: (d) => { const r = S.recurring.find((x) => x.id === d.id); r.active = !r.active; },

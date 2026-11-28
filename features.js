@@ -113,8 +113,23 @@ export function logEvent(text) {
 
 export function featuresInit(ctx) { F = ctx; }
 
+// Если автомобиль один, все операции категории «Авто» принадлежат ему: и обычные, и итоги закрытых месяцев.
+// Проверка безопасная и повторяемая: уже привязанные операции не трогаются.
+export const CAR_CATEGORY = 'Авто';
+export function linkCarOps(s) {
+  if (!s || !Array.isArray(s.cars) || s.cars.length !== 1) return 0;
+  const id = s.cars[0].id;
+  let n = 0;
+  for (const t of s.transactions || []) if (t.category === CAR_CATEGORY && t.type !== 'income' && !t.carId) { t.carId = id; n++; }
+  for (const h of Object.values(s.history_json || {})) {
+    for (const r of (h && h.rows) || []) if (r.category === CAR_CATEGORY && r.type !== 'income' && !r.carId) { r.carId = id; n++; }
+  }
+  return n;
+}
+
 // Гарантирует наличие новых полей в данных (для старых сохранений и импорта).
 export function ensureData(s) {
+  linkCarOps(s);
   s.budgets ||= {};
   s.allowances ||= {};
   // Лимиты с датой действия: новый набор применяется с месяца, указанного в from.
