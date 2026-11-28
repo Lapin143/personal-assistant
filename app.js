@@ -3,7 +3,7 @@ import { featuresInit, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
   remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL } from './features.js?v=c10';
 import { api, authEnabled, signIn, signOutLocal, validToken, getSession, setAuthLostHandler, economyMode } from './api.js?v=c3';
-import { createSync, allOps, isClosed } from './store.js?v=c7';
+import { createSync, allOps, isClosed } from './store.js?v=c8';
 import { iso, todayIso, daysBetween, upcoming, monthSummary, fuelStats, goalPct } from './core.js?v=c3';
 
 // ---------- помощники ----------
@@ -157,6 +157,7 @@ const opRow = (t) => (t.closed ? `<div class="li">
   <div class="main"><div class="t">${esc(t.category)}${t.private ? '<span class="badge-private">личное</span>' : ''}</div>
   <div class="s">${fmtDate(t.date)}${t.note ? ' · ' + esc(t.note) : ''}${t.personId ? ' · ' + esc(personName(t.personId)) : ''}</div></div>
   <div class="amt ${t.type === 'income' ? 'inc' : 'exp'}">${t.type === 'income' ? '+' : '−'}${money(t.amount)}</div>
+  <button class="icon-btn" data-act="editOp" data-id="${t.id}" aria-label="Изменить операцию">${svg('edit', 18)}</button>
   <button class="icon-btn" data-act="del" data-coll="transactions" data-id="${t.id}" aria-label="Удалить">${X}</button></div>`);
 
 const CAR_TYPES = { fuel: 'Топливо', service: 'ТО', repair: 'Ремонт', wash: 'Мойка', parking: 'Парковка', fine: 'Штраф', other: 'Прочее' };
@@ -595,6 +596,12 @@ const ACTIONS = {
     return false;
   },
   syncNow: () => { manualSync(false); return false; },
+  allowMassDelete: () => {
+    if (!confirm('Пометить удалёнными ' + (SYNC ? SYNC.info().blocked : 0) + ' записей в облаке? Убедитесь, что это не пустое устройство.')) return false;
+    if (SYNC) SYNC.allowMass();
+    runSync();
+    return false;
+  },
   fullSync: () => { manualSync(true); return false; },
   closeMonth: (d) => { openCloseMonth(d.ym); return false; },
   sec: (d) => { SEC = d.v; },
@@ -606,6 +613,28 @@ const ACTIONS = {
   del: (d) => {
     if (!confirm('Удалить запись?')) return false;
     S[d.coll] = S[d.coll].filter((x) => x.id !== d.id);
+  },
+  // Правка уже внесённой операции: те же поля, что при создании, с текущими значениями.
+  editOp: (d) => {
+    const t = S.transactions.find((x) => x.id === d.id);
+    if (!t) { toast('Операция не найдена: возможно, её уже удалили на другом устройстве'); return false; }
+    const cats = catAll();
+    if (t.category && !cats.some(([c]) => c === t.category)) cats.unshift([t.category, t.category]);
+    openForm('Изменить операцию', [
+      { k: 'type', t: 'select', l: 'Тип', opts: [['expense', 'Расход'], ['income', 'Доход']], v: t.type === 'income' ? 'income' : 'expense' },
+      { k: 'amount', t: 'number', l: 'Сумма', v: t.amount },
+      { k: 'date', t: 'date', l: 'Дата', v: t.date },
+      { k: 'category', t: 'select', l: 'Категория', opts: cats, v: t.category },
+      { k: 'personId', t: 'select', l: 'Чей', opts: [['', 'Общий'], ...S.people.map((p) => [p.id, p.name])], v: t.personId || '' },
+      { k: 'note', t: 'text', l: 'Комментарий', v: t.note || '' }
+    ], (o) => {
+      if (!o.amount || o.amount <= 0) return 'Введите сумму';
+      if (!o.date) return 'Укажите дату';
+      Object.assign(t, { type: o.type, amount: o.amount, date: o.date, category: o.category || 'Прочее', personId: o.personId, note: o.note });
+      logEvent(`Изменена операция: ${money(o.amount)} · ${o.category || 'Прочее'}`);
+      return null;
+    });
+    return false;
   },
   toggleRec: (d) => { const r = S.recurring.find((x) => x.id === d.id); r.active = !r.active; },
   editRec: (d) => {
@@ -795,6 +824,8 @@ function syncInfoHtml() {
   return `${i.last ? `Последняя синхронизация: ${fmtDate(iso(new Date(i.last)))} в ${hhmm(i.last)}.` : 'Синхронизации ещё не было.'}
     ${pending ? `Ждут отправки: ${pending}.` : 'Все изменения отправлены.'}
     ${i.error ? `<br><b>Последняя ошибка:</b> ${esc(i.error)}` : ''}
+    ${i.blocked ? `<div class="warn-box" style="margin-top:8px"><b>Защита данных.</b> Приложение хотело пометить удалёнными ${i.blocked} записей в облаке, это больше половины. Так бывает, если на устройстве пусто или данные не загрузились. Ничего не удалено. Если вы действительно удалили столько данных, подтвердите.
+      <div class="pill-row" style="margin-top:8px"><button class="btn soft" data-act="allowMassDelete">Подтвердить удаление</button></div></div>` : ''}
     <br>Данные обновляются при открытии приложения, после ваших изменений и по кнопке в шапке. «Полная сверка» перечитывает всё заново.`;
 }
 
