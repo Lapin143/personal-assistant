@@ -3,7 +3,7 @@ import { featuresInit, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
   remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL } from './features.js?v=c10';
 import { api, authEnabled, signIn, signOutLocal, validToken, getSession, setAuthLostHandler, economyMode } from './api.js?v=c3';
-import { createSync, allOps, isClosed } from './store.js?v=c6';
+import { createSync, allOps, isClosed } from './store.js?v=c7';
 import { iso, todayIso, daysBetween, upcoming, monthSummary, fuelStats, goalPct } from './core.js?v=c3';
 
 // ---------- помощники ----------
@@ -588,7 +588,9 @@ const ACTIONS = {
   logout: () => {
     if (SYNC && SYNC.pendingCount() && !confirm('Есть изменения, которые ещё не ушли в облако. При выходе они пропадут. Выйти?')) return false;
     signOutLocal();
-    for (const k of ['as.data', 'as.sync', 'as.lastPull']) localStorage.removeItem(k);
+    // Вместе с данными стираем и память синхронизации (as.sync.ydb-production), иначе после входа приложение
+    // считает, что всё уже загружено, остаётся пустым и может пометить облачные записи удалёнными.
+    for (const k of ['as.data', 'as.sync', 'as.sync.ydb-production', 'as.lastPull']) localStorage.removeItem(k);
     location.reload();
     return false;
   },
@@ -967,6 +969,13 @@ async function init() {
     plannerInit(plannerCtx);
     render();
     // Синхронизация в фоне: приложение открывается сразу из данных на устройстве, даже если сервер недоступен.
+    // Однократная починка: если на устройстве пусто, а память синхронизации осталась от прежних данных
+    // (после выхода из аккаунта), сбрасываем её. Тогда первая синхронизация заново загрузит всё из облака.
+    if (!read('as.syncfix1', false)) {
+      write('as.syncfix1', true);
+      const empty = !(S.transactions || []).length && !Object.keys(S.history_json || {}).length && !(S.lists || []).length;
+      if (empty) localStorage.removeItem('as.sync.ydb-production');
+    }
     startSync();
   } catch (err) {
     $('#main').innerHTML = `<div class="card">Не удалось загрузить data.json. Откройте приложение по ссылке GitHub Pages или через локальный сервер.<br><span class="muted">${esc(err.message)}</span></div>`;
