@@ -346,13 +346,18 @@ function dayRow(iso, locked) {
     ${slots}</div>`;
 }
 
+// Состояние раскрытия недель: ключ «месяц|понедельник», пока приложение открыто.
+const WEEK_OPEN = new Map();
+
 function weekDetails(mon, ym) {
   const w = M().weeks[mon] || {};
   const days = weekDaysIn(mon, ym);
   const filled = days.reduce((a, iso) => a + MEALS.filter(([s]) => on(dayOf(iso), s) && dayOf(iso)[s]).length, 0);
   const slots = days.reduce((a, iso) => a + MEALS.filter(([s]) => on(dayOf(iso), s)).length, 0);
-  const open = weekDays(mon).includes(ctx.todayIso()) ? 'open' : '';
-  return `<details class="pl-week" ${open}>
+  const key = `${ym}|${mon}`;
+  // Раскрытие недели запоминаем: при перерисовке (выбор блюда, галочка) она не должна закрываться сама.
+  const isOpen = WEEK_OPEN.has(key) ? WEEK_OPEN.get(key) : weekDays(mon).includes(ctx.todayIso());
+  return `<details class="pl-week" data-wk="${key}" ${isOpen ? 'open' : ''}>
     <summary><span>Неделя ${esc(weekLabel(mon))}</span>
       <span class="note">${filled} из ${slots}${w.status === 'bought' ? ' · куплено' : ''}</span></summary>
     ${days.map((iso) => dayRow(iso, w.status === 'bought')).join('')}</details>`;
@@ -677,7 +682,7 @@ function savePurchase({ date, store, total, items, method }) {
     monthRec(t.ym).longBought = true;
   }
   ctx.addTransaction({
-    type: 'expense', amount: total, date, category: 'Продукты', account: '', personId: '', private: false,
+    type: 'expense', amount: total, date, category: 'Продукты', personId: '', private: false,
     note: `Закупка: ${t.label}${store ? ' · ' + store : ''}`, fromPurchase: id
   });
   ctx.log?.(`Закупка ${money(total)}${store ? ' · ' + store : ''}`);
@@ -842,6 +847,12 @@ function act(b) {
 export function plannerBind() {
   if (!M()) return;
   const root = document.querySelector('#main');
+  root.querySelectorAll('details.pl-week').forEach((d) => {
+    const sum = d.querySelector('summary');
+    // Клик по строке недели срабатывает до переключения: запоминаем будущее состояние сразу.
+    if (sum) sum.addEventListener('click', () => WEEK_OPEN.set(d.dataset.wk, !d.open));
+    d.addEventListener('toggle', () => WEEK_OPEN.set(d.dataset.wk, d.open));
+  });
   root.querySelectorAll('[data-mtab]').forEach((b) => { b.onclick = () => { TAB = b.dataset.mtab; ctx.render(); }; });
   root.querySelectorAll('[data-mact]').forEach((b) => { b.onclick = () => act(b); });
   root.querySelectorAll('[data-stab]').forEach((b) => { b.onclick = () => { SHOP_TAB = b.dataset.stab; ctx.render(); }; });

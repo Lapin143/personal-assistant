@@ -26,6 +26,64 @@ function limitsFor(month) {
   return act ? { budgets: act.budgets || {}, allowances: act.allowances || {} } : { budgets: {}, allowances: {} };
 }
 const nextMonthYm = () => shiftYm(today().slice(0, 7), 1);
+
+// Личный лимит: операция человека, у которого на этот месяц задан личный лимит, списывает его,
+// а не лимит категории. Если личного лимита у человека нет, трата остаётся в лимите категории.
+const isPersonalSpend = (o, L) => o.type !== 'income' && Boolean(o.personId) && Number(L.allowances[o.personId]) > 0;
+// Траты месяца, которые считаются в лимитах категорий (без личных).
+export function categorySpend(ops, month) {
+  const L = limitsFor(month);
+  const byCat = {};
+  for (const o of ops) {
+    if (o.type === 'income' || isPersonalSpend(o, L)) continue;
+    byCat[o.category] = (byCat[o.category] || 0) + (Number(o.amount) || 0);
+  }
+  return byCat;
+}
+// Лимит категории в месяце (0 — не задан) и сколько уже потрачено из него.
+export function categoryLimitInfo(month) {
+  const L = limitsFor(month);
+  const ops = visible().filter((o) => o.date.startsWith(month));
+  return { limits: L.budgets, spent: categorySpend(ops, month) };
+}
+
+// Средние расходы по закрытым месяцам (статус «Месяц закрыт»: есть итоги в history_json).
+// Личные траты (с указанным «Чей» и личные операции) не входят: считаются только общие расходы.
+// Пересчитывается сама при каждом закрытии месяца, потому что берёт данные из итогов.
+export function closedAverages() {
+  const hist = S().history_json || {};
+  const cur = today().slice(0, 7);
+  const months = Object.keys(hist).filter((ym) => /^\d{4}-\d{2}$/.test(ym) && ym <= cur && hist[ym]).sort();
+  const byCat = {};
+  const byPerson = {};
+  let total = 0;
+  for (const ym of months) {
+    const h = hist[ym];
+    if (Array.isArray(h.rows)) {
+      for (const r of h.rows) {
+        if (r.type === 'income') continue;
+        const amt = Number(r.amount) || 0;
+        if (r.personId) byPerson[r.personId] = (byPerson[r.personId] || 0) + amt;
+        if (r.personId || r.private) continue;
+        total += amt;
+        byCat[r.category] = (byCat[r.category] || 0) + amt;
+      }
+    } else {
+      total += Number(h.total_expense) || 0;
+      for (const [c, v] of Object.entries(h.categories || {})) byCat[c] = (byCat[c] || 0) + (Number(v) || 0);
+    }
+  }
+  const n = months.length;
+  const avg = (v) => (n ? v / n : 0);
+  return {
+    months: n, total: avg(total),
+    byCat: Object.fromEntries(Object.entries(byCat).map(([c, v]) => [c, avg(v)])),
+    byPerson: Object.fromEntries(Object.entries(byPerson).map(([p, v]) => [p, avg(v)]))
+  };
+}
+// Среднее, округлённое до 100 ₽, для подстановки в поле лимита.
+const roundAvg = (v) => (v > 0 ? Math.max(100, Math.round(v / 100) * 100) : '');
+const monthsWord = (n) => (n % 10 === 1 && n % 100 !== 11 ? 'месяцу' : 'месяцам');
 const personOptsReal = () => S().people.map((p) => [p.id, p.name]);
 const catOpts = () => S().categories.expense.map((c) => [c, c]);
 const sumExp = (list) => list.filter((t) => t.type !== 'income').reduce((a, t) => a + (Number(t.amount) || 0), 0);
@@ -81,23 +139,36 @@ export function ensureData(s) {
 
 
 // ---------- подушка безопасности (раздел «Цели») ----------
-export function cushionHtml() {
+// Подушка = средний общий расход за закрытые месяцы (без личных трат) × выбранное число месяцев.
+function cushionState() {
   const s = S();
-  const t = today();
-  const prev = [1, 2, 3].map((k) => shiftYm(t.slice(0, 7), -k));
-  const ops = visible();
-  const total = prev.reduce((a, mth) => a + sumExp(ops.filter((o) => o.date.startsWith(mth))), 0);
-  const avg = total / 3;
-  const target = avg * s.cushion.months;
+  const a = closedAverages();
+  const target = a.total * s.cushion.months;
   const saved = Number(s.cushion.saved) || 0;
   const pct = target ? Math.min(100, Math.round((saved / target) * 100)) : 0;
+  return { a, target, saved, pct, months: s.cushion.months };
+}
+
+// Строка подушки для главной: показывается как обычная цель.
+export function cushionGoalRow() {
+  const c = cushionState();
+  return `<div class="li" style="display:block">
+    <div class="row" style="justify-content:space-between"><span class="t">Подушка безопасности</span><span class="note">${c.target ? c.pct + '%' : money(c.saved)}</span></div>
+    <div class="bar"><div style="width:${c.pct}%"></div></div>
+    <div class="note" style="margin-top:4px">${c.target ? `${money(c.saved)} из ${money(c.target)}` : 'Цель появится после закрытия первого месяца'}</div></div>`;
+}
+
+export function cushionHtml() {
+  const c = cushionState();
   return `<section class="cushion-card card">
     <div class="cushion-head"><div><div class="eyebrow">Финансовая опора</div><div class="setting-title">Подушка безопасности</div></div>
       <button class="icon-btn" data-act="cushionSet" aria-label="Настроить срок">⚙</button></div>
-    <div class="cushion-total">${money(saved)} <span>из ${money(target)}</span></div>
-    <div class="goal-track"><i style="width:${pct}%"></i></div>
-    <div class="cushion-caption">${s.cushion.months} мес. расходов · ${pct}% накоплено${avg ? ' · средний расход ' + money(avg) + '/мес.' : ''}</div>
-    ${avg ? '' : '<div class="note" style="margin-top:6px">Ориентир появится после накопления статистики трат за 3 месяца.</div>'}
+    <div class="cushion-total">${money(c.saved)} <span>из ${money(c.target)}</span></div>
+    <div class="goal-track"><i style="width:${c.pct}%"></i></div>
+    <div class="cushion-caption">${c.months} мес. расходов · ${c.pct}% накоплено${c.a.total ? ' · средний расход ' + money(c.a.total) + '/мес.' : ''}</div>
+    <div class="note" style="margin-top:6px">${c.a.months
+      ? `Расчёт по ${c.a.months} закрытым ${monthsWord(c.a.months)}: среднемесячные общие расходы без личных трат. Обновляется при закрытии месяца.`
+      : 'Цель появится после того, как вы закроете первый месяц в «Финансах». Считаются средние расходы закрытых месяцев без личных трат.'}</div>
     <button class="btn" data-act="cushionTopUp">Пополнить подушку&nbsp; +</button></section>`;
 }
 
@@ -117,13 +188,13 @@ function budgetHtml(month) {
   const L = limitsFor(month);
   const ops = visible().filter((o) => o.date.startsWith(month));
   const spent = sumExp(ops);
-  const byCat = {};
-  for (const o of ops) if (o.type !== 'income') byCat[o.category] = (byCat[o.category] || 0) + (Number(o.amount) || 0);
+  const byCat = categorySpend(ops, month);
+  const spentCat = Object.values(byCat).reduce((a, v) => a + v, 0);
   const unpaid = s.recurring.filter((r) => r.active && !s.confirmed[`${r.id}|${month}`]).reduce((a, r) => a + (Number(r.amount) || 0), 0);
   const limitTotal = Object.values(L.budgets).reduce((a, v) => a + (Number(v) || 0), 0);
-  const left = limitTotal - spent;
+  const left = limitTotal - spentCat;
   const forecastLeft = left - unpaid;
-  const percent = limitTotal ? Math.round((spent / limitTotal) * 100) : 0;
+  const percent = limitTotal ? Math.round((spentCat / limitTotal) * 100) : 0;
   const status = percent >= 100 ? 'over' : percent >= 80 || forecastLeft < 0 ? 'warn' : '';
   const categories = [...new Set([...s.categories.expense, ...Object.keys(byCat)])]
     .filter((c) => (Number(L.budgets[c]) || 0) > 0 || byCat[c]);
@@ -153,10 +224,10 @@ function budgetHtml(month) {
       <div class="bar ${cls}" role="progressbar" aria-label="${esc(p.name)}: потрачено ${money(sp)} из ${money(lim)}" aria-valuemin="0" aria-valuemax="${lim}" aria-valuenow="${Math.min(sp, lim)}"><div style="width:${Math.min(100, pct)}%"></div></div>
       <div class="budget-category-note">${pct >= 100 ? `Превышение ${money(sp - lim)}` : `Осталось ${money(lim - sp)}`}</div></div>`;
   }).join('');
-  const main = limitTotal ? `<div class="budget-main-numbers"><div><span>Потрачено</span><strong>${money(spent)}</strong></div>
+  const main = limitTotal ? `<div class="budget-main-numbers"><div><span>Потрачено</span><strong>${money(spentCat)}</strong></div>
       <div class="budget-main-limit"><span>из лимита</span><strong>${money(limitTotal)}</strong></div></div>
-    <div class="budget-main-track ${status}" role="progressbar" aria-label="Потрачено ${money(spent)} из лимита ${money(limitTotal)}" aria-valuemin="0" aria-valuemax="${limitTotal}" aria-valuenow="${Math.min(spent, limitTotal)}"><i style="width:${Math.min(100, percent)}%"></i></div>
-    <div class="budget-main-caption">${percent >= 100 ? `Лимит превышен на ${money(spent - limitTotal)}` : `${percent}% лимита · осталось ${money(left)}`}</div>`
+    <div class="budget-main-track ${status}" role="progressbar" aria-label="Потрачено ${money(spentCat)} из лимита ${money(limitTotal)}" aria-valuemin="0" aria-valuemax="${limitTotal}" aria-valuenow="${Math.min(spentCat, limitTotal)}"><i style="width:${Math.min(100, percent)}%"></i></div>
+    <div class="budget-main-caption">${percent >= 100 ? `Лимит превышен на ${money(spentCat - limitTotal)}` : `${percent}% лимита · осталось ${money(left)}`}</div>`
     : `<div class="budget-no-limit"><strong>Лимит расходов не задан</strong><span>Фактически потрачено ${money(spent)}. Задайте лимиты, чтобы видеть остаток бюджета.</span>
       <button class="btn soft" data-act="limEdit">Задать лимиты</button></div>`;
   const stats = limitTotal ? `<div class="budget-facts"><div><span>Остаток лимита</span><b class="${left < 0 ? 'neg' : 'pos'}">${money(left)}</b></div>
@@ -165,7 +236,7 @@ function budgetHtml(month) {
     : `<div class="budget-facts budget-facts-unlimited"><div><span>Предстоит платежей</span><b>${money(unpaid)}</b></div></div>`;
   return `<div class="card budget-overview"><div class="budget-overview-head"><div><div class="eyebrow">${esc(monthTitle(month))}</div><div class="setting-title">Расходы месяца</div></div>
       ${limitTotal ? `<span class="budget-status ${status}">${percent >= 100 ? 'Лимит превышен' : forecastLeft < 0 ? 'Риск превышения' : percent >= 80 ? 'Лимит почти исчерпан' : 'В пределах лимита'}</span>` : ''}</div>
-      ${main}${stats}<p class="budget-footnote">Предстоящие платежи не включены в уже потраченные суммы.</p></div>
+      ${main}${stats}<p class="budget-footnote">Предстоящие платежи не включены в уже потраченные суммы. Траты с отметкой «Чей» при заданном личном лимите списываются с него, а не с лимита категории.</p></div>
     <div class="card"><div class="setting-title">Расходы по категориям</div>
       <p class="setting-desc">Категории с наибольшей долей лимита показаны первыми. Жёлтый индикатор — от 80%, красный — лимит исчерпан.</p>
       ${categoryRows || '<div class="empty">Операций за этот месяц пока нет.</div>'}</div>
@@ -206,11 +277,18 @@ function limEditHtml() {
   const cur = limitsFor(curYm);
   const B = pend ? pend.budgets : cur.budgets;
   const A = pend ? pend.allowances : cur.allowances;
-  const rows = s.categories.expense.map((c) => `<div class="lim-row"><span>${esc(c)}</span>
-      <input data-bud="${esc(c)}" inputmode="decimal" placeholder="без лимита" value="${Number(B[c]) || ''}" aria-label="Лимит: ${esc(c)}"></div>`).join('');
-  const people = s.people.map((p) => `<div class="lim-row"><span>${esc(p.name)}</span>
-      <input data-alw="${p.id}" inputmode="decimal" placeholder="без лимита" value="${Number(A[p.id]) || ''}" aria-label="Личный лимит: ${esc(p.name)}"></div>`).join('');
+  const av = closedAverages();
+  const avgNote = (v) => (v > 0 ? `<small class="lim-avg">в среднем ${money(Math.round(v))}</small>` : '');
+  const rows = s.categories.expense.map((c) => `<div class="lim-row"><span>${esc(c)}${avgNote(av.byCat[c])}</span>
+      <input data-bud="${esc(c)}" data-avg="${roundAvg(av.byCat[c])}" inputmode="decimal" placeholder="без лимита" value="${Number(B[c]) || ''}" aria-label="Лимит: ${esc(c)}"></div>`).join('');
+  const people = s.people.map((p) => `<div class="lim-row"><span>${esc(p.name)}${avgNote(av.byPerson[p.id])}</span>
+      <input data-alw="${p.id}" data-avg="${roundAvg(av.byPerson[p.id])}" inputmode="decimal" placeholder="без лимита" value="${Number(A[p.id]) || ''}" aria-label="Личный лимит: ${esc(p.name)}"></div>`).join('');
+  const avgBlock = av.months
+    ? `<div class="lim-avg-box"><span>Средние расходы посчитаны по ${av.months} закрытым ${monthsWord(av.months)}; обновляются при закрытии месяца.</span>
+        <button class="btn soft" type="button" data-act="limFillAvg">Подставить средние в пустые поля</button></div>`
+    : '<p class="note">Подсказки со средними расходами появятся после закрытия первого месяца в «Финансах».</p>';
   return `<p class="setting-desc">Новые лимиты действуют с ${esc(monthTitle(nxt))}. Пустое поле — без лимита.</p>
+    ${avgBlock}
     <div class="sub-title">По категориям, ₽ в месяц</div>${rows}
     ${people ? `<div class="sub-title">Личные, ₽ в месяц</div>${people}` : ''}
     <div style="margin-top:12px"><button class="btn block" id="lim-save">Сохранить</button></div>`;
@@ -357,6 +435,14 @@ export const FEATURE_ACTIONS = {
       F.closeModal();
       F.render();
     };
+    return false;
+  },
+  limFillAvg: () => {
+    let n = 0;
+    document.querySelectorAll('[data-bud],[data-alw]').forEach((i) => {
+      if (String(i.value).trim() === '' && i.dataset.avg) { i.value = i.dataset.avg; n += 1; }
+    });
+    F.toast(n ? `Подставлено значений: ${n}. Проверьте и нажмите «Сохранить»` : 'Пустых полей со средним нет');
     return false;
   },
   saveBudgets: () => {
@@ -511,12 +597,11 @@ export const EXTRA_ADD = {
     { k: 'amount', t: 'number', l: 'Сумма' },
     { k: 'day', t: 'number', l: 'День месяца (1–31)', v: 10 },
     { k: 'category', t: 'select', l: 'Категория', opts: S().categories.income.map((c) => [c, c]), v: 'Зарплата' },
-    { k: 'account', t: 'select', l: 'Счёт', opts: S().accounts.map((a) => [a.id, a.name]), v: (S().accounts[0] || {}).id || '' },
     { k: 'personId', t: 'select', l: 'Чьё', opts: personOptsReal(), v: me() }
   ], (o) => {
     if (!o.title || o.amount === '' || o.amount <= 0) return 'Заполните название и сумму';
     S().incomes.push({ id: uid(), title: o.title, amount: o.amount, day: Math.min(31, Math.max(1, Number(o.day) || 1)),
-      category: o.category, account: o.account, personId: o.personId, active: true });
+      category: o.category, personId: o.personId, active: true });
     return null;
   })
 };
@@ -533,12 +618,11 @@ export const EXTRA_ACTIONS = {
       { k: 'amount', t: 'number', l: 'Сумма', v: i.amount },
       { k: 'day', t: 'number', l: 'День месяца (1–31)', v: i.day },
       { k: 'category', t: 'select', l: 'Категория', opts: S().categories.income.map((c) => [c, c]), v: i.category },
-      { k: 'account', t: 'select', l: 'Счёт', opts: S().accounts.map((a) => [a.id, a.name]), v: i.account },
       { k: 'personId', t: 'select', l: 'Чьё', opts: personOptsReal(), v: i.personId || '' }
     ], (o) => {
       if (!o.title || o.amount === '' || o.amount <= 0) return 'Заполните название и сумму';
       Object.assign(i, { title: o.title, amount: o.amount, day: Math.min(31, Math.max(1, Number(o.day) || 1)),
-        category: o.category, account: o.account, personId: o.personId });
+        category: o.category, personId: o.personId });
       return null;
     });
     return false;
@@ -551,7 +635,7 @@ export const EXTRA_ACTIONS = {
     ], (o) => {
       if (!o.amt || o.amt <= 0) return 'Введите сумму';
       S().transactions.push({ id: uid(), type: 'income', amount: o.amt, date: o.date || today(), category: i.category || 'Зарплата',
-        account: i.account || (S().accounts[0] || {}).id || '', personId: i.personId || '', private: false,
+        personId: i.personId || '', private: false,
         note: i.title, fromIncome: i.id });
       S().incomeConfirmed[`${i.id}|${d.ym}`] = { status: 'ok', at: today(), amount: o.amt };
       logEvent(`Поступление ${money(o.amt)} · ${i.title}`);

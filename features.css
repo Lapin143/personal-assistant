@@ -268,3 +268,8 @@
 [data-theme="dark"] .budget-status { background:#293e30; color:#b9dfbf; }
 [data-theme="dark"] .budget-status.warn { background:#463a27; color:#f1d49c; }
 [data-theme="dark"] .budget-status.over { background:#482e29; color:#f0b3a3; }
+
+/* Подсказки со средними расходами в окне лимитов */
+.lim-row .lim-avg{display:block;font-size:12px;color:var(--muted,#7a7a7a);margin-top:2px}
+.lim-avg-box{display:flex;flex-direction:column;gap:8px;margin:8px 0 12px;padding:10px;border-radius:12px;background:var(--row-line)}
+.lim-avg-box span{font-size:13px}

@@ -1,7 +1,7 @@
-import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b11';
-import { featuresInit, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, extraReminders,
+import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './menu/planner.js?v=b12';
+import { featuresInit, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, cushionGoalRow, categoryLimitInfo, extraReminders,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
-  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=c8';
+  remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL, remCatsSettingsHtml } from './features.js?v=c9';
 import { api, authEnabled, signIn, signOutLocal, validToken, getSession, setAuthLostHandler, requestCount, economyMode } from './api.js?v=c3';
 import { createSync, allOps, isClosed } from './store.js?v=c6';
 import { iso, todayIso, daysBetween, upcoming, monthSummary, fuelStats, goalPct } from './core.js?v=c3';
@@ -26,7 +26,6 @@ const shiftMonth = (ym, k) => { const d = new Date(ym + '-01T00:00'); d.setMonth
 const personName = (id) => (S.people.find((p) => p.id === id) || {}).name || '';
 const personOpts = () => [['', 'Общее'], ...S.people.map((p) => [p.id, p.name])];
 const catAll = () => [...new Set([...S.categories.expense, ...S.categories.income])].map((c) => [c, c]);
-const accOpts = () => S.accounts.map((a) => [a.id, a.name]);
 const need = (o, keys) => keys.every((k) => o[k] !== '' && o[k] !== undefined && !(typeof o[k] === 'number' && isNaN(o[k])));
 const safeUrl = (u) => (/^https?:\/\//.test(u || '') ? esc(u) : '');
 
@@ -187,7 +186,7 @@ function resolvePayment(rid, ym, status, fact = {}) {
   if (status === 'ok') {
     S.transactions.push({
       id: uid(), type: 'expense', amount: fact.amount ?? r.amount, date: fact.date || dueDateOf(r, ym), category: r.category || 'Прочее',
-      account: r.account || '', personId: r.personId || '', private: false,
+      personId: r.personId || '', private: false,
       note: `Регулярный: ${r.title}`, fromRecurring: r.id
     });
   }
@@ -224,6 +223,7 @@ function viewDash() {
       ${next.length ? next.slice(0, 1).map(liUp).join('') : '<div class="tomorrow-empty">Пока ничего не запланировано. Можно спокойно выдохнуть.</div>'}</div>
     <div class="home-goals card"><div class="home-goals-head"><div><div class="setting-title">Цели</div></div>
       <button class="btn soft" data-act="sec" data-v="goals">Все цели →</button></div>
+      ${cushionGoalRow()}
       ${S.goals.length ? S.goals.slice(0, 2).map(goalRow).join('') : '<div class="tomorrow-empty">Поставьте первую цель и двигайтесь к ней вместе.</div>'}</div>
     `;
 }
@@ -253,14 +253,26 @@ function viewFin() {
   let body = '';
   if (FIN_TAB === 'ops') {
     const cats = Object.entries(s.byCategory).sort((a, b) => b[1] - a[1]);
+    const lim = categoryLimitInfo(FIN_MONTH);
     const ops = allOps(S)
       .filter((t) => t.date.startsWith(FIN_MONTH) && (!t.private || t.personId === ME))
       .sort((a, b) => (a.date < b.date ? 1 : -1));
       const shownOps = OPS_EXPANDED ? ops : ops.slice(0, 5);
       body += `<div class="card"><div class="setting-title">По категориям</div>
-      ${cats.length ? cats.map(([c, v]) => `<div style="margin:8px 0">
+      ${cats.length ? cats.map(([c, v]) => {
+        const limit = Number(lim.limits[c]) || 0;
+        if (!limit) return `<div style="margin:8px 0">
         <div class="row" style="justify-content:space-between"><span>${esc(c)}</span><b>${money(v)}</b></div>
-        <div class="bar"><div style="width:${s.expense ? Math.round((v / s.expense) * 100) : 0}%"></div></div></div>`).join('')
+        <div class="bar"><div style="width:${s.expense ? Math.round((v / s.expense) * 100) : 0}%"></div></div></div>`;
+        // Лимит задан: показываем, сколько из него уже израсходовано (личные траты идут в личные лимиты).
+        const used = lim.spent[c] || 0;
+        const pct = Math.round((used / limit) * 100);
+        const cls = pct >= 100 ? 'over' : pct >= 80 ? 'warn' : '';
+        return `<div style="margin:8px 0">
+        <div class="row" style="justify-content:space-between"><span>${esc(c)}</span><b>${money(v)}</b></div>
+        <div class="bar ${cls}" role="progressbar" aria-label="${esc(c)}: использовано ${pct}% лимита" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.min(pct, 100)}"><div style="width:${Math.min(100, pct)}%"></div></div>
+        <div class="note">Лимит ${money(limit)}: использовано ${money(used)} (${pct}%) · ${used > limit ? 'превышение ' + money(used - limit) : 'осталось ' + money(limit - used)}</div></div>`;
+      }).join('')
         : '<div class="empty">Расходов нет</div>'}</div>
       <div class="card"><div class="row" style="justify-content:space-between">
         <div class="setting-title">Операции</div><button class="btn" data-act="addOp">+ Операция</button></div>
@@ -399,12 +411,7 @@ function viewPeople() {
       <p class="setting-desc">Вошли как ${esc(getSession() ? getSession().login : '—')}. Выход удаляет данные с этого устройства, в облаке они остаются.</p>
       <div class="pill-row"><button class="btn soft" data-act="logout">Выйти</button></div></div>
 
-    <div class="sub-title">Счета и категории</div>
-    <div class="card"><div class="row" style="justify-content:space-between"><div class="setting-title">Счета</div>
-      <button class="btn soft" data-act="addAcc">+ Счёт</button></div>
-      ${S.accounts.map((a) => `<div class="li"><div class="main"><div class="t">${esc(a.name)}</div>
-        <div class="s">${a.owner === 'shared' ? 'общий' : esc(personName(a.owner))}</div></div>
-        <button class="icon-btn" data-act="del" data-coll="accounts" data-id="${a.id}" aria-label="Удалить">${X}</button></div>`).join('')}</div>
+    <div class="sub-title">Категории</div>
     <div class="card"><div class="setting-title">Категории</div><p class="setting-desc">Через запятую</p>
       <label class="field" for="cat-exp">Расходы</label><textarea id="cat-exp" rows="2">${esc(S.categories.expense.join(', '))}</textarea>
       <label class="field" for="cat-inc">Доходы</label><textarea id="cat-inc" rows="2">${esc(S.categories.income.join(', '))}</textarea>
@@ -510,15 +517,14 @@ const ADD = {
     { k: 'amount', t: 'number', l: 'Сумма', ph: '0' },
     { k: 'date', t: 'date', l: 'Дата', v: todayIso() },
     { k: 'category', t: 'select', l: 'Категория', opts: catAll() },
-    { k: 'account', t: 'select', l: 'Счёт', opts: accOpts() },
-    { k: 'personId', t: 'select', l: 'Чей', opts: personOpts(), v: ME },
+    { k: 'personId', t: 'select', l: 'Чей', opts: [['', 'Общий'], ...S.people.map((p) => [p.id, p.name])], v: '' },
     { k: 'private', t: 'check', l: 'Личное (видите только вы)', v: false },
     { k: 'note', t: 'text', l: 'Комментарий' }
   ], (o) => {
     if (!o.amount || o.amount <= 0) return 'Введите сумму';
     if (!o.date) return 'Укажите дату';
     S.transactions.push({ id: uid(), type: o.type, amount: o.amount, date: o.date, category: o.category || 'Прочее',
-      account: o.account, personId: o.personId, private: o.private, note: o.note });
+      personId: o.personId, private: o.private, note: o.note });
     logEvent(`${o.type === 'income' ? 'Доход' : 'Расход'} ${money(o.amount)}${o.category ? ' · ' + o.category : ''}`);
     return null;
   }),
@@ -527,12 +533,11 @@ const ADD = {
     { k: 'amount', t: 'number', l: 'Сумма в месяц' },
     { k: 'day', t: 'number', l: 'День месяца (1–31)', v: 5 },
     { k: 'category', t: 'select', l: 'Категория', opts: catAll() },
-    { k: 'account', t: 'select', l: 'Счёт', opts: accOpts() },
     { k: 'personId', t: 'select', l: 'Чей', opts: personOpts(), v: '' }
   ], (o) => {
     if (!o.title || !need(o, ['amount', 'day'])) return 'Заполните название, сумму и день';
     S.recurring.push({ id: uid(), title: o.title, amount: o.amount, day: Math.min(31, Math.max(1, o.day)),
-      category: o.category, account: o.account, personId: o.personId, active: true });
+      category: o.category, personId: o.personId, active: true });
     return null;
   }),
   addGoal: () => openForm('Новая цель', [
@@ -576,14 +581,6 @@ const ADD = {
     if (!o.name) return 'Введите имя';
     S.people.push({ id: uid(), name: o.name });
     return null;
-  }),
-  addAcc: () => openForm('Счёт', [
-    { k: 'name', t: 'text', l: 'Название', ph: 'Карта Сбера, наличные' },
-    { k: 'owner', t: 'select', l: 'Кому принадлежит', opts: [['shared', 'Общий'], ...S.people.map((p) => [p.id, p.name])], v: 'shared' }
-  ], (o) => {
-    if (!o.name) return 'Введите название';
-    S.accounts.push({ id: uid(), name: o.name, owner: o.owner });
-    return null;
   })
 };
 
@@ -619,12 +616,11 @@ const ACTIONS = {
       { k: 'amount', t: 'number', l: 'Сумма в месяц', v: r.amount },
       { k: 'day', t: 'number', l: 'День месяца (1–31)', v: r.day },
       { k: 'category', t: 'select', l: 'Категория', opts: catAll(), v: r.category },
-      { k: 'account', t: 'select', l: 'Счёт', opts: accOpts(), v: r.account },
       { k: 'personId', t: 'select', l: 'Чей', opts: personOpts(), v: r.personId || '' }
     ], (o) => {
       if (!o.title || !need(o, ['amount', 'day'])) return 'Заполните название, сумму и день';
       Object.assign(r, { title: o.title, amount: o.amount, day: Math.min(31, Math.max(1, o.day)),
-        category: o.category, account: o.account, personId: o.personId });
+        category: o.category, personId: o.personId });
       return null;
     });
     return false;
@@ -718,7 +714,7 @@ const plannerCtx = {
   },
   closeModal,
   log: logEvent,
-  addTransaction: (t) => S.transactions.push({ id: uid(), ...t, account: t.account || (S.accounts[0] || {}).id || '' }),
+  addTransaction: (t) => S.transactions.push({ id: uid(), ...t }),
 };
 
 // ---------- синхронизация ----------
