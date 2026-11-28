@@ -440,9 +440,14 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
       else if (m.h !== h) ops.push({ rk, h, method: 'PATCH', id: m.id, data });
     }
     // Удалённое здесь помечается в таблице: так второе устройство узнаёт об удалении одним запросом изменений.
+    const tombOps = [];
     for (const [rk, m] of Object.entries(meta.rows)) {
-      if (!desired.has(rk)) ops.push({ rk, method: 'PATCH', id: m.id, tomb: true, data: { deleted: 1, title: '', amount: 0, category: '', date: '', data: meta.jsonStr ? '{}' : {} } });
+      if (!desired.has(rk)) tombOps.push({ rk, method: 'PATCH', id: m.id, tomb: true, data: { deleted: 1, title: '', amount: 0, category: '', date: '', data: meta.jsonStr ? '{}' : {} } });
     }
+    // Защита: если «удалённой» оказывается большая часть таблицы, это почти наверняка пустое устройство
+    // (чужой вход, сброс данных), а не решение человека. Облако не трогаем.
+    const total = Object.keys(meta.rows).length;
+    if (!(tombOps.length >= 5 && tombOps.length > total / 2)) ops.push(...tombOps);
     for (const id of meta.kill) ops.push({ method: 'DELETE', id, kill: true });
     for (const [id, at] of Object.entries(meta.tombs)) if (t - at > TOMB_KEEP_MS) ops.push({ method: 'DELETE', id: Number(id), purge: true });
     return ops;

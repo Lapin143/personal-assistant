@@ -445,4 +445,23 @@ ok('работает при любом представлении JSON-поля 
   ok('месяц обычного использования укладывается в лимит 1 000 запросов');
 }
 
+// 13. Выход и повторный вход: память синхронизации не должна «удалять» облачные данные
+{
+  const Z = makeTabrica();
+  const D = await makeDevice(Z, 'vlad', 'password-one', sample());
+  assert.ok((await D.go()).ok);
+  const alive = () => [...Z.rows.values()].filter((x) => !(x.deleted === 1 || x.deleted === true)).length;
+  const before = alive();
+  assert.ok(before >= 10);
+  // «выход» без очистки памяти синхронизации: данные устройства пустые, память о строках осталась
+  D.S = structuredClone(base);
+  assert.ok((await D.go()).ok);
+  assert.equal(alive(), before, 'пустое устройство не должно помечать облачные записи удалёнными');
+  // после полного сброса памяти данные возвращаются с сервера
+  D.sync.reset();
+  assert.ok((await D.go()).ok);
+  assert.equal(D.S.transactions.length, 5);
+  ok('пустое устройство со старой памятью не стирает облако; после сброса данные возвращаются');
+}
+
 console.log(`\nвсе ${n} проверок пройдены`);
