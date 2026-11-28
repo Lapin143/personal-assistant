@@ -445,4 +445,58 @@ ok('работает при любом представлении JSON-поля 
   ok('месяц обычного использования укладывается в лимит 1 000 запросов');
 }
 
+// 13. Выход и повторный вход: память синхронизации не должна «удалять» облачные данные
+{
+  const Z = makeTabrica();
+  const D = await makeDevice(Z, 'vlad', 'password-one', sample());
+  assert.ok((await D.go()).ok);
+  const alive = () => [...Z.rows.values()].filter((x) => !(x.deleted === 1 || x.deleted === true)).length;
+  const before = alive();
+  assert.ok(before >= 10);
+  // «выход» без очистки памяти синхронизации: данные устройства пустые, память о строках осталась
+  D.S = structuredClone(base);
+  assert.ok((await D.go()).ok);
+  assert.equal(alive(), before, 'пустое устройство не должно помечать облачные записи удалёнными');
+  // после полного сброса памяти данные возвращаются с сервера
+  D.sync.reset();
+  assert.ok((await D.go()).ok);
+  assert.equal(D.S.transactions.length, 5);
+  ok('пустое устройство со старой памятью не стирает облако; после сброса данные возвращаются');
+}
+
+// 14. Защита от массовой потери данных
+{
+  const Z = makeTabrica();
+  const D = await makeDevice(Z, 'vlad', 'password-one', sample());
+  assert.ok((await D.go()).ok);
+  const total = Z.rows.size;
+  // а) сервер вернул только малую часть таблицы (чужая или повреждённая база): локальные данные остаются
+  const keep = [...Z.rows.values()].slice(0, 3);
+  const backup = new Map(Z.rows);
+  Z.rows.clear();
+  for (const x of keep) Z.rows.set(x.id, x);
+  const had = D.S.transactions.length;
+  assert.ok((await D.go({ full: true })).ok);
+  assert.equal(D.S.transactions.length, had, 'урезанный ответ сервера не должен стирать данные устройства');
+  // б) обычное единичное удаление проходит и помечается без потери содержимого
+  Z.rows.clear();
+  for (const [k, v] of backup) Z.rows.set(k, v);
+  assert.ok((await D.go({ full: true })).ok);
+  D.S.transactions = D.S.transactions.filter((t) => t.id !== 't1');
+  assert.ok((await D.go()).ok);
+  const gone = [...Z.rows.values()].find((x) => x.kind === 'tx' && x.key === 't1');
+  assert.equal(gone.deleted, 1);
+  assert.ok(gone.data && Object.keys(gone.data).length > 0, 'содержимое удалённой строки сохраняется для отката');
+  // в) пустое устройство: массовая пометка заблокирована, после подтверждения проходит
+  D.S = structuredClone(base);
+  assert.ok((await D.go()).ok);
+  assert.ok(D.sync.info().blocked > 0);
+  const alive = () => [...Z.rows.values()].filter((x) => x.deleted !== 1).length;
+  assert.ok(alive() > 5);
+  D.sync.allowMass();
+  assert.ok((await D.go()).ok);
+  assert.equal(D.sync.info().blocked, 0);
+  ok('защита: урезанный сервер, обратимое удаление, блокировка массового удаления с подтверждением');
+}
+
 console.log(`\nвсе ${n} проверок пройдены`);

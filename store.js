@@ -405,7 +405,11 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
 
     if (pulled.full) {
       // Строки, которых в таблице больше нет и которые никто не создал заново, удалены на другом устройстве.
-      for (const rk of stale) if (!meta.rows[rk] && rows.delete(rk)) changed = true;
+      // Сервер «потерял» больше половины известных строк: так бывает при подключении к другой или повреждённой базе.
+      // Локальные данные не стираем: они вернутся в облако при отправке.
+      const gone = stale.filter((rk) => !meta.rows[rk]); // строки, которые на сервере не появились снова
+      const suspicious = gone.length >= 5 && gone.length > (gone.length + Object.keys(meta.rows).length) / 2;
+      if (!suspicious) for (const rk of gone) if (rows.delete(rk)) changed = true;
       for (const id of Object.keys(meta.tombs)) if (!remoteIds.has(Number(id))) delete meta.tombs[id];
       meta.kill = meta.kill.filter((id) => remoteIds.has(id));
       meta.lastFull = t;
@@ -440,9 +444,16 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
       else if (m.h !== h) ops.push({ rk, h, method: 'PATCH', id: m.id, data });
     }
     // Удалённое здесь помечается в таблице: так второе устройство узнаёт об удалении одним запросом изменений.
+    const tombOps = [];
     for (const [rk, m] of Object.entries(meta.rows)) {
-      if (!desired.has(rk)) ops.push({ rk, method: 'PATCH', id: m.id, tomb: true, data: { deleted: 1, title: '', amount: 0, category: '', date: '', data: meta.jsonStr ? '{}' : {} } });
+      if (!desired.has(rk)) tombOps.push({ rk, method: 'PATCH', id: m.id, tomb: true, data: { kind: rk.slice(0, rk.indexOf('|')), key: rk.slice(rk.indexOf('|') + 1), deleted: 1 } }); // содержимое не стираем: ошибочное удаление можно отменить, вернув deleted = 0
     }
+    // Защита: если «удалённой» оказывается большая часть таблицы, это почти наверняка пустое устройство
+    // (чужой вход, сброс данных), а не решение человека. Облако не трогаем.
+    const total = Object.keys(meta.rows).length;
+    const mass = tombOps.length >= 5 && tombOps.length > total / 2;
+    meta.blocked = mass && !meta.allowMass ? tombOps.length : 0;
+    if (!mass || meta.allowMass) ops.push(...tombOps);
     for (const id of meta.kill) ops.push({ method: 'DELETE', id, kill: true });
     for (const [id, at] of Object.entries(meta.tombs)) if (t - at > TOMB_KEEP_MS) ops.push({ method: 'DELETE', id: Number(id), purge: true });
     return ops;
@@ -551,6 +562,7 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
       stats.requests += pushed.requests;
       meta.last = pulled.serverNow;
       meta.lastOk = now();
+      meta.allowMass = false;
       saveMeta();
       stats.ok = true;
       lastError = '';
@@ -619,7 +631,9 @@ export function createSync({ api, storage, getState, setState, now = () => Date.
     // Вызывается перед сохранением: операция, добавленная в закрытый месяц, сразу уходит в его итоги.
     tidy: (S) => { const c = foldClosed(S); if (c) saveMeta(); return c; },
     busy: () => Boolean(running),
-    info: () => ({ last: meta.lastOk, lastFull: meta.lastFull, rows: Object.keys(meta.rows).length, error: lastError }),
+    info: () => ({ last: meta.lastOk, lastFull: meta.lastFull, rows: Object.keys(meta.rows).length, error: lastError, blocked: meta.blocked || 0 }),
+    // Человек подтвердил массовое удаление: следующая отправка пройдёт без защиты.
+    allowMass: () => { meta.allowMass = true; saveMeta(); },
     reset: () => { meta = blank(); storage.removeItem(metaKey); }
   };
 }
