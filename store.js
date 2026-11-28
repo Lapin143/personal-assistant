@@ -215,9 +215,10 @@ export function summarize(txs) {
     const category = t.category || 'Прочее';
     if (type === 'income') { sum.total_income += amount; sum.income_categories[category] = (sum.income_categories[category] || 0) + amount; }
     else { sum.total_expense += amount; sum.categories[category] = (sum.categories[category] || 0) + amount; }
-    const k = canon([type, category, t.personId || '', Boolean(t.private)]);
+    const k = canon([type, category, t.personId || '', Boolean(t.private), t.carId || '']);
     let row = idx.get(k);
-    if (!row) { row = { type, category, personId: t.personId || '', private: Boolean(t.private), amount: 0, count: 0 }; idx.set(k, row); sum.rows.push(row); }
+    if (!row) { row = { type, category, personId: t.personId || '', private: Boolean(t.private), amount: 0, count: 0 };
+      if (t.carId) row.carId = t.carId; idx.set(k, row); sum.rows.push(row); }
     row.amount += amount;
     row.count += 1;
     sum.count += 1;
@@ -237,7 +238,7 @@ export function mergeSummary(a, b) {
   }
   out.rows ||= [];
   for (const r of b.rows) {
-    const hit = out.rows.find((x) => x.type === r.type && x.category === r.category && (x.personId || '') === r.personId && Boolean(x.private) === r.private);
+    const hit = out.rows.find((x) => x.type === r.type && x.category === r.category && (x.personId || '') === r.personId && Boolean(x.private) === r.private && (x.carId || '') === (r.carId || ''));
     if (hit) { hit.amount += r.amount; hit.count += r.count; } else out.rows.push({ ...r });
   }
   return out;
@@ -250,7 +251,7 @@ export function historyOps(S) {
     if (!/^\d{4}-\d{2}$/.test(ym) || !h) continue;
     (h.rows || []).forEach((r, i) => out.push({
       id: `h|${ym}|${i}`, closed: true, type: r.type, amount: r.amount, category: r.category, date: lastDayOf(ym),
-      personId: r.personId || '', private: Boolean(r.private), note: `Итог месяца, операций: ${r.count}`
+      personId: r.personId || '', private: Boolean(r.private), carId: r.carId || '', note: `Итог месяца, операций: ${r.count}`
     }));
   }
   return out;

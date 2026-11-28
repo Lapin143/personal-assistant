@@ -3,8 +3,8 @@ import { featuresInit, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
   remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL } from './features.js?v=c10';
 import { api, authEnabled, signIn, signOutLocal, validToken, getSession, setAuthLostHandler, economyMode } from './api.js?v=c3';
-import { createSync, allOps, isClosed } from './store.js?v=c8';
-import { iso, todayIso, daysBetween, upcoming, monthSummary, fuelStats, goalPct } from './core.js?v=c3';
+import { createSync, allOps, isClosed } from './store.js?v=c9';
+import { iso, todayIso, daysBetween, upcoming, monthSummary, goalPct } from './core.js?v=c3';
 
 // ---------- помощники ----------
 const $ = (sel) => document.querySelector(sel);
@@ -155,11 +155,13 @@ const opRow = (t) => (t.closed ? `<div class="li">
   <div class="s">${esc(t.note)}${t.personId ? ' · ' + esc(personName(t.personId)) : ''}</div></div>
   <div class="amt ${t.type === 'income' ? 'inc' : 'exp'}">${t.type === 'income' ? '+' : '−'}${money(t.amount)}</div></div>` : `<div class="li">
   <div class="main"><div class="t">${esc(t.category)}${t.private ? '<span class="badge-private">личное</span>' : ''}</div>
-  <div class="s">${fmtDate(t.date)}${t.note ? ' · ' + esc(t.note) : ''}${t.personId ? ' · ' + esc(personName(t.personId)) : ''}</div></div>
+  <div class="s">${fmtDate(t.date)}${t.note ? ' · ' + esc(t.note) : ''}${t.personId ? ' · ' + esc(personName(t.personId)) : ''}${t.carId && carName(t.carId) ? ' · ' + esc(carName(t.carId)) : ''}</div></div>
   <div class="amt ${t.type === 'income' ? 'inc' : 'exp'}">${t.type === 'income' ? '+' : '−'}${money(t.amount)}</div>
   <button class="icon-btn" data-act="editOp" data-id="${t.id}" aria-label="Изменить операцию">${svg('edit', 18)}</button>
   <button class="icon-btn" data-act="del" data-coll="transactions" data-id="${t.id}" aria-label="Удалить">${X}</button></div>`);
 
+// Поле «Автомобиль» в форме операции показывается, только если автомобили добавлены.
+const carField = (v) => (S.cars.length ? [{ k: 'carId', t: 'select', l: 'Автомобиль', opts: [['', 'Без автомобиля'], ...S.cars.map((c) => [c.id, `${c.make} ${c.model}`.trim()])], v }] : []);
 const CAR_TYPES = { fuel: 'Топливо', service: 'ТО', repair: 'Ремонт', wash: 'Мойка', parking: 'Парковка', fine: 'Штраф', other: 'Прочее' };
 
 // ---------- регулярные платежи: операция появляется только после подтверждения ----------
@@ -350,40 +352,67 @@ function viewRem() {
   return remView();
 }
 
+// Расходы на авто берутся из обычных операций (поле «Автомобиль»), отдельно их вести не нужно.
+// Старые записи раздела (S.carExpenses) остаются в итогах как «прежние».
+let CAR_YEAR = null;
+const carYear = () => CAR_YEAR || todayIso().slice(0, 4);
+const carName = (id) => { const c = S.cars.find((x) => x.id === id); return c ? `${c.make} ${c.model}`.trim() : ''; };
+const carOps = (carId) => [
+  ...allOps(S).filter((t) => t.carId === carId && t.type !== 'income' && (!t.private || t.personId === ME)),
+  ...(S.carExpenses || []).filter((e) => e.carId === carId).map((e) => ({ id: e.id, legacy: true, type: 'expense', amount: e.amount, date: e.date,
+    category: CAR_TYPES[e.type] || 'Авто', note: e.note || '' }))
+];
+
 function carCard(c) {
   const open = CAR_ID === c.id;
-  const exps = S.carExpenses.filter((e) => e.carId === c.id).sort((a, b) => (a.date < b.date ? 1 : -1));
+  const year = carYear();
   const ym = todayIso().slice(0, 7);
-  const month = exps.filter((e) => e.date.startsWith(ym)).reduce((a, e) => a + Number(e.amount), 0);
-  const total = exps.reduce((a, e) => a + Number(e.amount), 0);
-  const fs = fuelStats(S.carExpenses, c.id);
+  const ops = carOps(c.id);
+  const sum = (list) => list.reduce((a, e) => a + (Number(e.amount) || 0), 0);
+  const month = sum(ops.filter((e) => e.date.startsWith(ym)));
+  const yearOps = ops.filter((e) => e.date.startsWith(year));
+  const yearTotal = sum(yearOps);
+  const perMonth = Array.from({ length: 12 }, (_, i) => sum(yearOps.filter((e) => e.date.slice(5, 7) === String(i + 1).padStart(2, '0'))));
+  const peak = Math.max(1, ...perMonth);
+  const byCat = {};
+  for (const e of yearOps) byCat[e.category] = (byCat[e.category] || 0) + (Number(e.amount) || 0);
+  const cats = Object.entries(byCat).sort((x, y) => y[1] - x[1]);
+  const MS = ['Я', 'Ф', 'М', 'А', 'М', 'И', 'И', 'А', 'С', 'О', 'Н', 'Д'];
+  const monthOps = ops.filter((e) => e.date.startsWith(ym)).sort((x, y) => (x.date < y.date ? 1 : -1));
   return `<div class="card">
     <div class="row" style="justify-content:space-between">
       <div data-act="carOpen" data-id="${c.id}" style="cursor:pointer;flex:1">
         <div class="setting-title" style="margin:0">${esc(c.make)} ${esc(c.model)} ${c.year ? `<span class="note">${esc(c.year)}</span>` : ''}</div>
         <div class="note">${esc(c.plate || '')}${c.mileage ? ' · пробег ' + Number(c.mileage).toLocaleString('ru-RU') + ' км' : ''}</div></div>
+      <button class="icon-btn" data-act="editCar" data-id="${c.id}" aria-label="Изменить автомобиль">${svg('edit', 18)}</button>
       <button class="icon-btn" data-act="del" data-coll="cars" data-id="${c.id}" aria-label="Удалить">${X}</button></div>
     <div class="grid-2" style="margin-top:10px">
-      <div class="stat"><div class="lbl">За месяц</div><div class="val">${money(month)}</div></div>
-      <div class="stat"><div class="lbl">Расход топлива</div><div class="val">${fs.avg ? fs.avg.toFixed(1) + ' л/100 км' : '—'}</div></div></div>
+      <div class="stat"><div class="lbl">Потрачено в этом месяце</div><div class="val">${money(month)}</div></div>
+      <div class="stat"><div class="lbl">За ${esc(year)} год</div><div class="val">${money(yearTotal)}</div></div></div>
     ${c.insuranceUntil ? `<div class="note" style="margin-top:8px">Страховка до ${fmtDate(c.insuranceUntil)}</div>` : ''}
     ${c.inspectionUntil ? `<div class="note">Техосмотр до ${fmtDate(c.inspectionUntil)}</div>` : ''}
-    ${open ? `<div class="sub-title">Расходы · всего ${money(total)}</div>
-      <div class="row" style="justify-content:flex-end"><button class="btn" data-act="addCarExp" data-id="${c.id}">+ Расход</button></div>
-      ${exps.length ? exps.map((e) => `<div class="li">
-        <div class="main"><div class="t">${CAR_TYPES[e.type] || e.type}${e.liters ? ` · ${e.liters} л` : ''}</div>
-        <div class="s">${fmtDate(e.date)}${e.mileage ? ' · ' + Number(e.mileage).toLocaleString('ru-RU') + ' км' : ''}${e.note ? ' · ' + esc(e.note) : ''}</div></div>
-        <div class="amt exp">−${money(e.amount)}</div>
-        <button class="icon-btn" data-act="del" data-coll="carExpenses" data-id="${e.id}" aria-label="Удалить">${X}</button></div>`).join('')
-        : '<div class="empty">Расходов пока нет</div>'}` : ''}
+    ${open ? `<div class="sub-title">Статистика за ${esc(year)} год</div>
+      <div class="car-bars" role="img" aria-label="Расходы по месяцам">${perMonth.map((v, i) => `<div class="car-bar${year + '-' + String(i + 1).padStart(2, '0') === ym ? ' is-cur' : ''}" title="${money(v)}"><i style="height:${Math.round((v / peak) * 100)}%"></i><span>${MS[i]}</span></div>`).join('')}</div>
+      ${cats.length ? cats.map(([cat, v]) => `<div class="cat-row"><span>${esc(cat)}</span><span>${yearTotal ? Math.round((v / yearTotal) * 100) : 0}%</span><span>${money(v)}</span></div>`).join('')
+        : '<div class="empty">За этот год расходов нет</div>'}
+      <div class="row" style="justify-content:space-between;margin-top:12px"><div class="sub-title" style="margin:0">Расходы этого месяца</div>
+        <button class="btn" data-act="addOp" data-car="${c.id}">+ Расход</button></div>
+      ${monthOps.length ? monthOps.map((e) => (e.legacy ? `<div class="li"><div class="main"><div class="t">${esc(e.category)}<span class="badge-private">прежняя запись</span></div>
+        <div class="s">${fmtDate(e.date)}${e.note ? ' · ' + esc(e.note) : ''}</div></div><div class="amt exp">−${money(e.amount)}</div>
+        <button class="icon-btn" data-act="del" data-coll="carExpenses" data-id="${e.id}" aria-label="Удалить">${X}</button></div>` : opRow(e))).join('')
+        : '<div class="empty">В этом месяце расходов на авто нет</div>'}
+      <p class="note">Расходы вносятся как обычные операции с выбранным автомобилем, поэтому они сразу попадают в «Финансы» и в лимиты.</p>` : ''}
   </div>`;
 }
 
 function viewCar() {
-  return `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn" data-act="addCar">+ Автомобиль</button></div>
-    ${S.cars.length ? S.cars.map(carCard).join('') : '<div class="card empty">Добавьте автомобиль, чтобы вести расходы и сроки</div>'}`;
+  const y = carYear();
+  return `<div class="row" style="justify-content:space-between;margin-bottom:8px">
+    <div class="row" style="gap:4px"><button class="icon-btn" data-act="carYear" data-d="-1" aria-label="Предыдущий год">${svg('left', 18)}</button><strong>${esc(y)}</strong>
+      <button class="icon-btn" data-act="carYear" data-d="1" aria-label="Следующий год">${svg('right', 18)}</button></div>
+    <button class="btn" data-act="addCar">+ Автомобиль</button></div>
+    ${S.cars.length ? S.cars.map(carCard).join('') : '<div class="card empty">Добавьте автомобиль, чтобы видеть расходы за месяц и год</div>'}`;
 }
-
 
 // Раздел «Ещё»: всё, что не поместилось в нижнюю панель.
 function viewMore() {
@@ -512,18 +541,19 @@ function bindChange() {
 const ADD = {
   ...FEATURE_ADD,
   ...EXTRA_ADD,
-  addOp: () => openForm('Новая операция', [
+  addOp: (d = {}) => openForm('Новая операция', [
     { k: 'type', t: 'select', l: 'Тип', opts: [['expense', 'Расход'], ['income', 'Доход']], v: 'expense' },
     { k: 'amount', t: 'number', l: 'Сумма', ph: '0' },
     { k: 'date', t: 'date', l: 'Дата', v: todayIso() },
-    { k: 'category', t: 'select', l: 'Категория', opts: catAll() },
+    { k: 'category', t: 'select', l: 'Категория', opts: catAll(), v: d.car && catAll().some(([c]) => c === 'Авто') ? 'Авто' : undefined },
+    ...carField(d.car || ''),
     { k: 'personId', t: 'select', l: 'Чей', opts: [['', 'Общий'], ...S.people.map((p) => [p.id, p.name])], v: '' },
     { k: 'note', t: 'text', l: 'Комментарий' }
   ], (o) => {
     if (!o.amount || o.amount <= 0) return 'Введите сумму';
     if (!o.date) return 'Укажите дату';
     S.transactions.push({ id: uid(), type: o.type, amount: o.amount, date: o.date, category: o.category || 'Прочее',
-      personId: o.personId, private: false, note: o.note });
+      personId: o.personId, private: false, note: o.note, ...(o.carId ? { carId: o.carId } : {}) });
     logEvent(`${o.type === 'income' ? 'Доход' : 'Расход'} ${money(o.amount)}${o.category ? ' · ' + o.category : ''}`);
     return null;
   }),
@@ -625,12 +655,14 @@ const ACTIONS = {
       { k: 'amount', t: 'number', l: 'Сумма', v: t.amount },
       { k: 'date', t: 'date', l: 'Дата', v: t.date },
       { k: 'category', t: 'select', l: 'Категория', opts: cats, v: t.category },
+      ...carField(t.carId || ''),
       { k: 'personId', t: 'select', l: 'Чей', opts: [['', 'Общий'], ...S.people.map((p) => [p.id, p.name])], v: t.personId || '' },
       { k: 'note', t: 'text', l: 'Комментарий', v: t.note || '' }
     ], (o) => {
       if (!o.amount || o.amount <= 0) return 'Введите сумму';
       if (!o.date) return 'Укажите дату';
       Object.assign(t, { type: o.type, amount: o.amount, date: o.date, category: o.category || 'Прочее', personId: o.personId, note: o.note });
+      if (o.carId) t.carId = o.carId; else delete t.carId;
       logEvent(`Изменена операция: ${money(o.amount)} · ${o.category || 'Прочее'}`);
       return null;
     });
@@ -680,24 +712,26 @@ const ACTIONS = {
     });
     return false;
   },
-  addCarExp: (d) => {
-    const car = S.cars.find((x) => x.id === d.id);
-    openForm(`Расход: ${car.make} ${car.model}`, [
-      { k: 'type', t: 'select', l: 'Вид', opts: Object.entries(CAR_TYPES), v: 'fuel' },
-      { k: 'date', t: 'date', l: 'Дата', v: todayIso() },
-      { k: 'amount', t: 'number', l: 'Сумма' },
-      { k: 'mileage', t: 'number', l: 'Пробег, км (для расхода топлива)' },
-      { k: 'liters', t: 'number', l: 'Литры (для топлива)' },
-      { k: 'note', t: 'text', l: 'Комментарий' }
+  editCar: (d) => {
+    const c = S.cars.find((x) => x.id === d.id);
+    if (!c) { toast('Автомобиль не найден: возможно, его уже удалили на другом устройстве'); return false; }
+    openForm('Изменить автомобиль', [
+      { k: 'make', t: 'text', l: 'Марка', v: c.make },
+      { k: 'model', t: 'text', l: 'Модель', v: c.model },
+      { k: 'year', t: 'number', l: 'Год', v: c.year },
+      { k: 'plate', t: 'text', l: 'Госномер', v: c.plate || '' },
+      { k: 'mileage', t: 'number', l: 'Текущий пробег, км', v: c.mileage },
+      { k: 'insuranceUntil', t: 'date', l: 'Страховка до', v: c.insuranceUntil || '' },
+      { k: 'inspectionUntil', t: 'date', l: 'Техосмотр до', v: c.inspectionUntil || '' }
     ], (o) => {
-      if (!need(o, ['amount'])) return 'Введите сумму';
-      S.carExpenses.push({ id: uid(), carId: car.id, type: o.type, date: o.date, amount: o.amount,
-        mileage: o.mileage, liters: o.liters, note: o.note });
-      if (o.mileage && (!car.mileage || o.mileage > car.mileage)) car.mileage = o.mileage;
+      if (!o.make || !o.model) return 'Укажите марку и модель';
+      Object.assign(c, { make: o.make, model: o.model, year: o.year || '', plate: o.plate, mileage: o.mileage || '',
+        insuranceUntil: o.insuranceUntil, inspectionUntil: o.inspectionUntil });
       return null;
     });
     return false;
   },
+  carYear: (d) => { CAR_YEAR = String(Number(carYear()) + Number(d.d)); },
   saveNames: () => {
     let changed = 0;
     for (const p of S.people) {
@@ -725,7 +759,7 @@ document.addEventListener('click', (e) => {
   if (!el) return;
   const name = el.dataset.act;
   let changed;
-  if (ADD[name]) { ADD[name](); return; }
+  if (ADD[name]) { ADD[name](el.dataset); return; }
   if (!ACTIONS[name]) return;
   changed = ACTIONS[name](el.dataset);
   if (changed !== false) { save(); render(); }
