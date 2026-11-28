@@ -2,7 +2,7 @@ import { plannerHtml, plannerBind, plannerInit, plannerSummaryHtml } from './men
 import { featuresInit, ensureData, finTabHtml, isFinExtraTab, FIN_TABS, dashTop, cushionHtml, cushionGoalRow, categoryLimitInfo, extraReminders,
   viewLists, FEATURE_ADD, FEATURE_ACTIONS, logEvent,
   remView, pendingIncomes, pendingIncomeHtml, EXTRA_ADD, EXTRA_ACTIONS_ALL } from './features.js?v=c10';
-import { api, authEnabled, signIn, signOutLocal, validToken, getSession, setAuthLostHandler, requestCount, economyMode } from './api.js?v=c3';
+import { api, authEnabled, signIn, signOutLocal, validToken, getSession, setAuthLostHandler, economyMode } from './api.js?v=c3';
 import { createSync, allOps, isClosed } from './store.js?v=c6';
 import { iso, todayIso, daysBetween, upcoming, monthSummary, fuelStats, goalPct } from './core.js?v=c3';
 
@@ -433,8 +433,8 @@ function viewPeople() {
       <div class="pill-row"><button class="btn" data-act="syncNow">Синхронизировать</button>
         <button class="btn soft" data-act="fullSync">Полная сверка</button></div></div>
     <div class="card"><div class="setting-title">Резервная копия</div>
-      <p class="setting-desc">Сохраняет все данные в файл на случай поломки или смены телефона. Не публикуйте файл: в нём финансы.</p>
-      <div class="pill-row"><button class="btn" data-act="exportData">Скачать копию</button></div></div>`;
+      <p class="setting-desc">Все данные приложения одним файлом. Нажмите кнопку и выберите почтовое приложение: файл прикрепится к письму сам, на телефон ничего сохранять не нужно. В файле ваши финансы, отправляйте только себе.</p>
+      <div class="pill-row"><button class="btn" data-act="emailBackup">Отправить копию на почту</button></div></div>`;
 }
 
 const TITLE = { ...Object.fromEntries(SECTIONS), settings: 'Настройки', more: 'Ещё', lists: 'Списки' };
@@ -686,7 +686,7 @@ const ACTIONS = {
     toast('Сохранено');
   },
   bell: () => { openBell(); },
-  exportData: () => { downloadJson('assistant-data.json', S); return false; },
+  emailBackup: () => { emailBackup(); return false; },
 };
 
 document.addEventListener('click', (e) => {
@@ -790,12 +790,9 @@ function syncInfoHtml() {
   if (!SYNC) return 'Синхронизация выключена.';
   const i = SYNC.info();
   const pending = SYNC.pendingCount();
-  const n = requestCount();
   return `${i.last ? `Последняя синхронизация: ${fmtDate(iso(new Date(i.last)))} в ${hhmm(i.last)}.` : 'Синхронизации ещё не было.'}
     ${pending ? `Ждут отправки: ${pending}.` : 'Все изменения отправлены.'}
     ${i.error ? `<br><b>Последняя ошибка:</b> ${esc(i.error)}` : ''}
-    <br>Запросов к базе с этого устройства в этом месяце: <b>${n}</b>. Основное приложение подключено к YDB; лимит запросов Табрики здесь не применяется.
-    ${economyMode() ? '<br><b>Экономный режим синхронизации</b>' : ''}
     <br>Данные обновляются при открытии приложения, после ваших изменений и по кнопке в шапке. «Полная сверка» перечитывает всё заново.`;
 }
 
@@ -826,6 +823,27 @@ function startSync() {
 }
 
 // ---------- закрытие месяца ----------
+// Резервная копия письмом: системное окно «Поделиться» прикрепляет файл к выбранному почтовому приложению.
+// Если устройство не умеет отправлять файлы (например, компьютер), копия скачивается обычным способом.
+async function emailBackup() {
+  const stamp = todayIso();
+  const name = `assistant-backup-${stamp}.json`;
+  const text = JSON.stringify(S, null, 2);
+  const file = new File([text], name, { type: 'application/json' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: `Резервная копия Ассистента ${fmtDate(stamp)}`,
+        text: 'Резервная копия данных семейного Ассистента. Файл во вложении.' });
+      toast('Копия отправлена в выбранное приложение', 2500);
+      return;
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return; // человек закрыл окно, ничего не делаем
+  }
+  downloadJson(name, S);
+  toast('На этом устройстве нет отправки файлов: копия скачана, прикрепите её к письму вручную', 5000);
+}
+
 function downloadJson(name, data) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
